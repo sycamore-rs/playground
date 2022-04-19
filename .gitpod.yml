@@ -2,8 +2,8 @@ image:
   file: .gitpod.Dockerfile
 
 tasks:
-  - command: trunk serve
-    init: trunk build # Prebuild app so running trunk-serve would be much faster
+  - command: cd client && trunk serve
+    init: cd client && trunk build # Prebuild app so running trunk-serve would be much faster
 
 ports:
   - port: 8080
