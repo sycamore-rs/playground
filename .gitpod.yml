@@ -7,7 +7,9 @@ tasks:
 
 ports:
   - port: 8080
-    onOpen: open-preview
+    onOpen: notify
+  - port: 3000
+    onOpen: notify
 
 github:
   prebuilds:
