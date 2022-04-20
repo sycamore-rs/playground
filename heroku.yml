@@ -2,4 +2,4 @@ build:
   docker:
     web: .heroku.Dockerfile
 run:
-  web: ./target/release/playground-server
+  web: cd ./server && ../target/release/playground-server

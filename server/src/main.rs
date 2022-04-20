@@ -45,20 +45,20 @@ async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
 
     let _guard = LOCK.lock().await;
 
-    fs::write("playground/src/main.rs", code).await?;
+    fs::write("../playground/src/main.rs", code).await?;
 
     let cargo_build = Command::new("cargo")
         .arg("build")
         .arg("--target")
         .arg("wasm32-unknown-unknown")
-        .current_dir("playground")
+        .current_dir("../playground")
         .output()
         .await?;
 
     if cargo_build.status.success() {
         let _output = Command::new("trunk")
             .arg("build")
-            .arg("playground/index.html")
+            .arg("../playground/index.html")
             .output()
             .await
             .context("call trunk")?;
@@ -75,14 +75,14 @@ async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
 async fn pack_into_html(cache_file_name: &Path) -> Result<Html<String>> {
     // wasm file should be in playground/dist
     let mut wasm_files =
-        glob::glob("playground/dist/*.wasm").context("glob the wasm binary in playground/dist")?;
+        glob::glob("../playground/dist/*.wasm").context("glob the wasm binary in playground/dist")?;
     let wasm_file = wasm_files
         .next()
         .context("should have exactly 1 wasm file in playground/dist")??;
     let wasm_file_buf = fs::read(wasm_file).await?;
     let wasm_encoded = encode(&wasm_file_buf);
     let mut js_files =
-        glob::glob("playground/dist/*.js").context("glob the js script in playground/dist")?;
+        glob::glob("../playground/dist/*.js").context("glob the js script in playground/dist")?;
     let js_file = js_files
         .next()
         .context("should have exactly 1 js file in playground/dist")??;

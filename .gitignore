@@ -1,4 +1,4 @@
 /target
-/server/playground/dist
-/server/playground/src
 /server/cache
+/playground/dist
+/playground/src
