@@ -17,7 +17,6 @@ use serde::Deserialize;
 use tokio::{fs, process::Command, sync::Mutex};
 use tower_http::cors::{Any, CorsLayer};
 
-const GIT_VERSION: &str = git_version::git_version!();
 const CACHE_DIR: &str = "cache";
 
 async fn get_index() -> &'static str {
@@ -32,7 +31,6 @@ struct CompileReq {
 fn hash_str(s: &str) -> String {
     let mut hasher = DefaultHasher::new();
     s.hash(&mut hasher);
-    GIT_VERSION.hash(&mut hasher);
     let hash = hasher.finish();
     base64::encode_config(hash.to_le_bytes(), base64::URL_SAFE)
 }
