@@ -1,1 +1,5 @@
-fn main() { println!("Hello Worlds!"); }
+use sycamore::prelude::*;
+
+fn main() {
+    sycamore::render(|cx| view! { cx, "Hello World!" });
+}

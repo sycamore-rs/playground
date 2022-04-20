@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use axum::{
+    http::{self, Method},
     response::Html,
     routing::{get, post},
     Json, Router,
@@ -14,6 +15,7 @@ use base64::encode;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::{fs, process::Command, sync::Mutex};
+use tower_http::cors::{Any, CorsLayer};
 
 const GIT_VERSION: &str = git_version::git_version!();
 const CACHE_DIR: &str = "cache";
@@ -128,7 +130,13 @@ async fn post_compile(Json(payload): Json<CompileReq>) -> Html<String> {
 async fn main() {
     let app = Router::new()
         .route("/", get(get_index))
-        .route("/compile", post(post_compile));
+        .route("/compile", post(post_compile))
+        .layer(
+            CorsLayer::new()
+                .allow_headers(vec![http::header::CONTENT_TYPE])
+                .allow_methods(vec![Method::GET, Method::POST, Method::OPTIONS])
+                .allow_origin(Any),
+        );
 
     // Run on localhost:3000.
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())

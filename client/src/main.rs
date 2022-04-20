@@ -1,26 +1,51 @@
-use sycamore::prelude::*;
+use gloo_net::http::Request;
+use serde::Serialize;
+use sycamore::{futures::spawn_local_scoped, prelude::*, rt::JsCast};
+use web_sys::HtmlIFrameElement;
+
+#[derive(Serialize)]
+struct CompileReq {
+    code: String,
+}
 
 #[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
-    let name = create_signal(cx, String::new());
+    let code = create_signal(cx, String::new());
+    let iframe = create_node_ref(cx);
 
-    let displayed_name = move || {
-        if name.get().is_empty() {
-            "World".to_string()
-        } else {
-            name.get().as_ref().clone()
-        }
+    let run = move |_| {
+        spawn_local_scoped(cx, async {
+            let html = Request::post(
+                "https://3000-sycamorers-sycamoretrunk-r9ag1z6dkrs.ws-us34.gitpod.io/compile",
+            )
+            .json(&CompileReq {
+                code: code.get().as_ref().clone(),
+            })
+            .unwrap()
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+
+            iframe
+                .get::<DomNode>()
+                .inner_element()
+                .unchecked_into::<HtmlIFrameElement>()
+                .set_srcdoc(&html);
+        });
     };
 
     view! { cx,
+        h1 { "Sycamore Playground" }
         div {
-            h1 {
-                "Hello "
-                (displayed_name())
-                "!"
-            }
-
-            input(placeholder="What is your name?", bind:value=name)
+            textarea(bind:value=code)
+            button(on:click=run) { "Run" }
+        }
+        div {
+            h2 { "Preview" }
+            iframe(ref=iframe)
         }
     }
 }

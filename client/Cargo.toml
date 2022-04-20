@@ -8,5 +8,8 @@ edition = "2021"
 [dependencies]
 console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
+gloo-net = { version = "0.2.0" }
 log = "0.4.14"
-sycamore = "0.8.0-beta.4"
+serde = { version = "1.0.136", features = ["derive"] }
+sycamore = { version = "0.8.0-beta.4", features = ["suspense"] }
+web-sys = { version = "0.3.57", features = ["HtmlIFrameElement"] }
