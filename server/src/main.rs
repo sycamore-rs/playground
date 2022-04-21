@@ -1,5 +1,5 @@
 use std::{
-    collections::hash_map::DefaultHasher,
+    collections::{hash_map::DefaultHasher, HashSet},
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
@@ -37,9 +37,15 @@ fn hash_str(s: &str) -> String {
 
 async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
     static LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    static CACHE: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
     let code_hash = hash_str(&code);
     let cache_file_name: PathBuf = [CACHE_DIR, &format!("{code_hash}.html")].iter().collect();
+    // First check if we have a cached version.
+    if CACHE.lock().await.contains(&code_hash) {
+        // Return the cached file.
+        return Ok(Html(fs::read_to_string(cache_file_name).await?));
+    }
 
     let _guard = LOCK.lock().await;
 
@@ -61,7 +67,10 @@ async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
             .await
             .context("call trunk")?;
 
-        pack_into_html(&cache_file_name).await
+        let res = pack_into_html(&cache_file_name).await;
+        // Add the generated file to the cache.
+        CACHE.lock().await.insert(code_hash);
+        res
     } else {
         Err(anyhow::anyhow!(
             "compile error:\n{}",
