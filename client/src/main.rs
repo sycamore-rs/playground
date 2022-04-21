@@ -1,7 +1,9 @@
 use gloo_net::http::Request;
 use serde::Serialize;
-use sycamore::{futures::spawn_local_scoped, prelude::*, rt::JsCast};
-use web_sys::HtmlIFrameElement;
+use sycamore::futures::spawn_local_scoped;
+use sycamore::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{Event, HtmlElement, KeyboardEvent};
 
 static BACKEND_URL: &str = "https://sycamore-playground.herokuapp.com";
 
@@ -11,41 +13,84 @@ struct CompileReq {
 }
 
 #[component]
+fn NavBar<G: Html>(cx: Scope) -> View<G> {
+    view! { cx,
+        nav(class="bg-orange-400 h-10") {
+            h1(class="text-white text-lg font-bold") { "Sycamore Playground" }
+        }
+    }
+}
+
+#[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
     let code = create_signal(cx, String::new());
-    let iframe = create_node_ref(cx);
+    let srcdoc = create_signal(cx, String::new());
+    let running = create_signal(cx, false);
+    let textarea_ref = create_node_ref(cx);
 
-    let run = move |_| {
+    let run = move || {
         spawn_local_scoped(cx, async {
-            let html = Request::post(&format!("{BACKEND_URL}/compile"))
-                .json(&CompileReq {
-                    code: code.get().as_ref().clone(),
-                })
-                .unwrap()
-                .send()
-                .await
-                .unwrap()
-                .text()
-                .await
-                .unwrap();
+            if !*running.get() {
+                running.set(true);
+                let html = Request::post(&format!("{BACKEND_URL}/compile"))
+                    .json(&CompileReq {
+                        code: code.get().as_ref().clone(),
+                    })
+                    .unwrap()
+                    .send()
+                    .await
+                    .unwrap()
+                    .text()
+                    .await
+                    .unwrap();
 
-            iframe
-                .get::<DomNode>()
-                .inner_element()
-                .unchecked_into::<HtmlIFrameElement>()
-                .set_srcdoc(&html);
+                srcdoc.set(html);
+                running.set(false);
+            }
         });
     };
 
-    view! { cx,
-        h1 { "Sycamore Playground" }
-        div {
-            textarea(bind:value=code, placeholder="Enter code here...")
-            button(on:click=run) { "Run" }
+    let keydown = move |e: Event| {
+        let e = e.unchecked_into::<KeyboardEvent>();
+        if e.ctrl_key() && e.key() == "Enter" {
+            run();
         }
-        div {
-            h2 { "Preview" }
-            iframe(ref=iframe)
+    };
+
+    spawn_local_scoped(cx, async {
+        // FIXME: set spellcheck directly on the textarea element.
+        textarea_ref
+            .get::<DomNode>()
+            .unchecked_into::<HtmlElement>()
+            .set_spellcheck(false);
+    });
+
+    view! { cx,
+        NavBar {}
+        main(class="px-2 flex w-full absolute top-10 bottom-0 divide-x divide-gray-400 space-x-2") {
+            div(class="flex flex-col flex-1") {
+                div {
+                    h2(class="font-bold text-lg inline") { "Code" }
+                    button(
+                        class="inline ml-5 px-3 bg-green-400 rounded font-bold text-white disabled:bg-green-200",
+                        on:click=move |_| run(),
+                        disabled=*running.get()
+                    ) { "Run" }
+                }
+                textarea(
+                    class="block flex-1 rounded p-1 bg-slate-200 focus-visible:outline-none font-mono",
+                    bind:value=code,
+                    placeholder="Enter code here...",
+                    on:keydown=keydown,
+                    ref=textarea_ref,
+                )
+            }
+            div(class="flex flex-col flex-1") {
+                div {
+                    h2(class="font-bold text-lg") { "Preview" }
+                }
+                iframe(class="block flex-1", srcdoc=srcdoc.get())
+            }
         }
     }
 }

@@ -2,3 +2,5 @@
 /client/dist
 /server/cache
 /playground/dist
+
+node_modules

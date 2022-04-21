@@ -589,6 +589,7 @@ dependencies = [
  "log",
  "serde",
  "sycamore",
+ "wasm-bindgen",
  "web-sys",
 ]
 
