@@ -72,8 +72,8 @@ async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
 
 async fn pack_into_html(cache_file_name: &Path) -> Result<Html<String>> {
     // wasm file should be in playground/dist
-    let mut wasm_files =
-        glob::glob("../playground/dist/*.wasm").context("glob the wasm binary in playground/dist")?;
+    let mut wasm_files = glob::glob("../playground/dist/*.wasm")
+        .context("glob the wasm binary in playground/dist")?;
     let wasm_file = wasm_files
         .next()
         .context("should have exactly 1 wasm file in playground/dist")??;
@@ -136,8 +136,9 @@ async fn main() {
                 .allow_origin(Any),
         );
 
-    // Run on localhost:3000.
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    // Run on localhost:PORT.
+    let port = std::env::var("PORT").unwrap_or("3000".to_string());
+    axum::Server::bind(&format!("0.0.0.0:{port}").parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();
