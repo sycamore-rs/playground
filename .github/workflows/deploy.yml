@@ -37,7 +37,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: npm ci
+      - name: npm ci
+        run: cd client && npm ci
 
       - name: Build
         run: cd client && trunk build --release --public-url /playground/
