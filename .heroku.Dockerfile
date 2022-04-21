@@ -12,3 +12,6 @@ RUN rustup target add wasm32-unknown-unknown
 
 # Build server
 RUN cd server && cargo build --release
+
+# Build playground
+RUN cd playground && echo "fn main() {}" > src/main.rs && cargo build --target wasm32-unknown-unknown
