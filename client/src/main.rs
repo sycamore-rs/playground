@@ -40,7 +40,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
     view! { cx,
         h1 { "Sycamore Playground" }
         div {
-            textarea(bind:value=code)
+            textarea(bind:value=code, placeholder="Enter code here...")
             button(on:click=run) { "Run" }
         }
         div {
