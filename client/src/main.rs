@@ -3,6 +3,8 @@ use serde::Serialize;
 use sycamore::{futures::spawn_local_scoped, prelude::*, rt::JsCast};
 use web_sys::HtmlIFrameElement;
 
+static BACKEND_URL: &str = "https://sycamore-playground.herokuapp.com";
+
 #[derive(Serialize)]
 struct CompileReq {
     code: String,
@@ -15,19 +17,17 @@ fn App<G: Html>(cx: Scope) -> View<G> {
 
     let run = move |_| {
         spawn_local_scoped(cx, async {
-            let html = Request::post(
-                "https://3000-sycamorers-sycamoretrunk-r9ag1z6dkrs.ws-us34.gitpod.io/compile",
-            )
-            .json(&CompileReq {
-                code: code.get().as_ref().clone(),
-            })
-            .unwrap()
-            .send()
-            .await
-            .unwrap()
-            .text()
-            .await
-            .unwrap();
+            let html = Request::post(&format!("{BACKEND_URL}/compile"))
+                .json(&CompileReq {
+                    code: code.get().as_ref().clone(),
+                })
+                .unwrap()
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap();
 
             iframe
                 .get::<DomNode>()
