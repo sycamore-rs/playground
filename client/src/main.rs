@@ -2,8 +2,17 @@ use gloo_net::http::Request;
 use serde::Serialize;
 use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
-use wasm_bindgen::JsCast;
-use web_sys::{Event, HtmlElement, KeyboardEvent};
+use wasm_bindgen::prelude::*;
+use web_sys::Node;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = "initEditor")]
+    fn init_editor(elem: &Node);
+
+    #[wasm_bindgen(js_name = "getCode")]
+    fn get_code() -> String;
+}
 
 static BACKEND_URL: &str = "https://sycamore-playground.herokuapp.com";
 
@@ -23,19 +32,16 @@ fn NavBar<G: Html>(cx: Scope) -> View<G> {
 
 #[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
-    let code = create_signal(cx, String::new());
     let srcdoc = create_signal(cx, String::new());
     let running = create_signal(cx, false);
-    let textarea_ref = create_node_ref(cx);
+    let editor_ref = create_node_ref(cx);
 
     let run = move || {
         spawn_local_scoped(cx, async {
             if !*running.get() {
                 running.set(true);
                 let html = Request::post(&format!("{BACKEND_URL}/compile"))
-                    .json(&CompileReq {
-                        code: code.get().as_ref().clone(),
-                    })
+                    .json(&CompileReq { code: get_code() })
                     .unwrap()
                     .send()
                     .await
@@ -50,19 +56,8 @@ fn App<G: Html>(cx: Scope) -> View<G> {
         });
     };
 
-    let keydown = move |e: Event| {
-        let e = e.unchecked_into::<KeyboardEvent>();
-        if e.ctrl_key() && e.key() == "Enter" {
-            run();
-        }
-    };
-
     spawn_local_scoped(cx, async {
-        // FIXME: set spellcheck directly on the textarea element.
-        textarea_ref
-            .get::<DomNode>()
-            .unchecked_into::<HtmlElement>()
-            .set_spellcheck(false);
+        init_editor(&editor_ref.get::<DomNode>().unchecked_into());
     });
 
     view! { cx,
@@ -77,13 +72,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                         disabled=*running.get()
                     ) { "Run" }
                 }
-                textarea(
-                    class="block flex-1 rounded p-1 bg-slate-200 focus-visible:outline-none font-mono",
-                    bind:value=code,
-                    placeholder="Enter code here...",
-                    on:keydown=keydown,
-                    ref=textarea_ref,
-                )
+                div(class="block flex-1", ref=editor_ref)
             }
             div(class="flex flex-col flex-1") {
                 div {
