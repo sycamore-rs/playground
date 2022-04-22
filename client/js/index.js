@@ -10,9 +10,9 @@ import { rust } from "@codemirror/lang-rust";
  */
 let view;
 
-window.initEditor = (elem) => {
+window.initEditor = (elem, doc) => {
   let state = EditorState.create({
-    doc: 'use sycamore::prelude::*;\n\nfn main() {\n    sycamore::render(|cx| view! { cx,\n        "Hello World!"\n    });\n}',
+    doc,
     extensions: [
       basicSetup,
       rust(),
