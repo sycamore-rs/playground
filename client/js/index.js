@@ -5,10 +5,13 @@ import { indentWithTab } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
 import { rust } from "@codemirror/lang-rust";
 
-let state;
+/**
+ * @type {EditorView}
+ */
+let view;
 
 window.initEditor = (elem) => {
-  state = EditorState.create({
+  let state = EditorState.create({
     doc: 'use sycamore::prelude::*;\n\nfn main() {\n    sycamore::render(|cx| view! { cx,\n        "Hello World!"\n    });\n}',
     extensions: [
       basicSetup,
@@ -18,10 +21,12 @@ window.initEditor = (elem) => {
     ],
   });
 
-  new EditorView({
+  view = new EditorView({
     state,
     parent: elem,
   });
 };
 
-window.getCode = () => state.doc.sliceString(0);
+window.getCode = () => view.state.doc.sliceString(0);
+
+window.getState = () => view.state;
