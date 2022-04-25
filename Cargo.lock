@@ -296,6 +296,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gloo-storage"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1caa4ba51c99de680dee3ad99c32ca45e9f13311be72079154d222c3f9a6b6f5"
+dependencies = [
+ "gloo-utils",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "gloo-utils"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -586,6 +601,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "gloo-net",
+ "gloo-storage",
  "log",
  "serde",
  "sycamore",

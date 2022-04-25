@@ -10,6 +10,9 @@ import { rust } from "@codemirror/lang-rust";
  */
 let view;
 
+const updateHandlers = [];
+window.stateUpdate = (f) => updateHandlers.push(f);
+
 window.initEditor = (elem, doc) => {
   let state = EditorState.create({
     doc,
@@ -18,6 +21,12 @@ window.initEditor = (elem, doc) => {
       rust(),
       keymap.of([indentWithTab]),
       indentUnit.of("    "),
+      EditorView.updateListener.of((update) => {
+        let text = update.state.doc.sliceString(0);
+        for (const f of updateHandlers) {
+          f(text);
+        }
+      }),
     ],
   });
 

@@ -1,4 +1,5 @@
 use gloo_net::http::Request;
+use gloo_storage::{LocalStorage, Storage};
 use serde::Serialize;
 use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
@@ -7,6 +8,9 @@ use web_sys::Node;
 
 #[wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen(js_name = "stateUpdate")]
+    fn state_update(cb: &Closure<dyn FnMut(String)>);
+
     #[wasm_bindgen(js_name = "initEditor")]
     fn init_editor(elem: &Node, doc: &str);
 
@@ -36,7 +40,7 @@ struct CompileReq {
 #[derive(Prop)]
 struct NavBarProps<'a> {
     run: Box<dyn FnMut() + 'a>,
-    running: &'a ReadSignal<bool>,
+    building: &'a ReadSignal<bool>,
 }
 
 #[component]
@@ -53,7 +57,7 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a>) -> View<G> {
             button(
                 class="inline-block ml-5 px-3 bg-green-400 rounded font-bold text-white disabled:bg-green-200",
                 on:click=move |_| (props.run)(),
-                disabled=*props.running.get()
+                disabled=*props.building.get()
             ) { "Run" }
         }
     }
@@ -65,13 +69,22 @@ fn App<G: Html>(cx: Scope) -> View<G> {
         cx,
         "Press the \"Run\" button to preview the app.".to_string(),
     );
-    let running = create_signal(cx, false);
+    let building = create_signal(cx, false);
     let editor_ref = create_node_ref(cx);
+    let source = create_rc_signal(String::new());
+    let source_ref = create_ref(cx, source.clone());
+
+    let on_update = move |text| {
+        source.set(text);
+    };
+    let on_update: Box<dyn FnMut(String)> = Box::new(on_update);
+    let on_update = create_ref(cx, Closure::wrap(on_update));
+    state_update(on_update);
 
     let run = move || {
         spawn_local_scoped(cx, async {
-            if !*running.get() {
-                running.set(true);
+            if !*building.get() {
+                building.set(true);
                 let html = Request::post(&format!("{BACKEND_URL}/compile"))
                     .json(&CompileReq { code: get_code() })
                     .unwrap()
@@ -83,22 +96,40 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                     .unwrap();
 
                 srcdoc.set(html);
-                running.set(false);
+                building.set(false);
             }
         });
     };
 
-    spawn_local_scoped(cx, async {
-        init_editor(&editor_ref.get::<DomNode>().unchecked_into(), DEFAULT_EDITOR_CODE);
+    // Get saved code from local storage or initialize with default code.
+    // We get the code before writing the new code to local storage in the effect below.
+    let code: String = LocalStorage::get("CODE").unwrap_or_else(|_| String::new());
+    let code = if code.trim() == "" {
+        DEFAULT_EDITOR_CODE.to_string()
+    } else {
+        code
+    };
+
+    // Save changes to code to local storage.
+    create_effect(cx, || {
+        LocalStorage::set("CODE", source_ref.get().as_ref())
+            .expect("failed to save code to local storage");
+    });
+
+    spawn_local_scoped(cx, async move {
+        init_editor(&editor_ref.get::<DomNode>().unchecked_into(), &code);
     });
 
     view! { cx,
-        NavBar { run: Box::new(run), running }
+        NavBar { run: Box::new(run), building }
         main(class="px-2 flex w-full absolute top-10 bottom-0 divide-x divide-gray-400 space-x-2") {
             div(class="flex flex-col flex-1") {
                 div(class="block flex-1", ref=editor_ref)
             }
-            div(class="flex flex-col flex-1") {
+            div(class="flex flex-col flex-1 {}") {
+                // Loading bar container
+                div(class="h-0.5 w-full")
+                // Preview
                 iframe(class="block flex-1", srcdoc=srcdoc.get())
             }
         }
