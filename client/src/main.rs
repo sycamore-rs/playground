@@ -55,11 +55,9 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a>) -> View<G> {
 
 #[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
-    let srcdoc = create_signal(
-        cx,
-        "Press the \"Run\" button to preview the app.".to_string(),
-    );
+    let srcdoc = create_signal(cx, String::new());
     let building = create_signal(cx, false);
+    let show_first_run = create_signal(cx, true);
     let source = create_rc_signal(String::new());
     let source_ref = create_ref(cx, source.clone());
 
@@ -81,6 +79,9 @@ fn App<G: Html>(cx: Scope) -> View<G> {
 
                 srcdoc.set(html);
                 building.set(false);
+                if *show_first_run.get() {
+                    show_first_run.set(false);
+                }
             }
         });
     };
@@ -111,7 +112,15 @@ fn App<G: Html>(cx: Scope) -> View<G> {
             }
             div(class="flex flex-col flex-1 {}") {
                 // Preview
-                iframe(class="block flex-1", srcdoc=srcdoc.get())
+                (if *show_first_run.get() {
+                    view! { cx,
+                        "Press the \"Run\" button to preview the app."
+                    }
+                } else {
+                    view! { cx,
+                        iframe(class="block flex-1", srcdoc=srcdoc.get())
+                    }
+                })
             }
         }
     }

@@ -5,7 +5,7 @@ COPY . /sycamore-playground
 WORKDIR /sycamore-playground
 
 # Install trunk
-RUN bash -cl "wget -qO- https://github.com/thedodd/trunk/releases/download/v0.14.0/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf- && mv ./trunk /usr/bin/"
+RUN bash -cl "wget -qO- https://github.com/thedodd/trunk/releases/download/v0.15.0/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf- && mv ./trunk /usr/bin/"
 
 # Install wasm32-unknown-unknown target
 RUN rustup target add wasm32-unknown-unknown
