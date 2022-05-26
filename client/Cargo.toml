@@ -10,8 +10,8 @@ console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
 gloo-net = "0.2.0"
 gloo-storage = "0.2.1"
-log = "0.4.14"
-serde = { version = "1.0.136", features = ["derive"] }
-sycamore = { version = "0.8.0-beta.4", features = ["suspense"] }
+log = "0.4.17"
+serde = { version = "1.0.137", features = ["derive"] }
+sycamore = { version = "0.8.0-beta.6", features = ["suspense"] }
 wasm-bindgen = "0.2.80"
 web-sys = { version = "0.3.57", features = ["KeyboardEvent"] }

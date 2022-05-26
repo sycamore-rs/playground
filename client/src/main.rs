@@ -1,22 +1,12 @@
+mod editor_view;
+
 use gloo_net::http::Request;
 use gloo_storage::{LocalStorage, Storage};
 use serde::Serialize;
 use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
-use wasm_bindgen::prelude::*;
-use web_sys::Node;
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_name = "stateUpdate")]
-    fn state_update(cb: &Closure<dyn FnMut(String)>);
-
-    #[wasm_bindgen(js_name = "initEditor")]
-    fn init_editor(elem: &Node, doc: &str);
-
-    #[wasm_bindgen(js_name = "getCode")]
-    fn get_code() -> String;
-}
+use crate::editor_view::EditorView;
 
 static BACKEND_URL: &str = "https://sycamore-playground.herokuapp.com";
 
@@ -33,8 +23,8 @@ fn main() {
 "#;
 
 #[derive(Serialize)]
-struct CompileReq {
-    code: String,
+struct CompileReq<'a> {
+    code: &'a str,
 }
 
 #[derive(Prop)]
@@ -70,23 +60,17 @@ fn App<G: Html>(cx: Scope) -> View<G> {
         "Press the \"Run\" button to preview the app.".to_string(),
     );
     let building = create_signal(cx, false);
-    let editor_ref = create_node_ref(cx);
     let source = create_rc_signal(String::new());
     let source_ref = create_ref(cx, source.clone());
-
-    let on_update = move |text| {
-        source.set(text);
-    };
-    let on_update: Box<dyn FnMut(String)> = Box::new(on_update);
-    let on_update = create_ref(cx, Closure::wrap(on_update));
-    state_update(on_update);
 
     let run = move || {
         spawn_local_scoped(cx, async {
             if !*building.get() {
                 building.set(true);
                 let html = Request::post(&format!("{BACKEND_URL}/compile"))
-                    .json(&CompileReq { code: get_code() })
+                    .json(&CompileReq {
+                        code: &source_ref.get(),
+                    })
                     .unwrap()
                     .send()
                     .await
@@ -109,6 +93,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
     } else {
         code
     };
+    source.set(code);
 
     // Save changes to code to local storage.
     create_effect(cx, || {
@@ -116,19 +101,15 @@ fn App<G: Html>(cx: Scope) -> View<G> {
             .expect("failed to save code to local storage");
     });
 
-    spawn_local_scoped(cx, async move {
-        init_editor(&editor_ref.get::<DomNode>().unchecked_into(), &code);
-    });
-
     view! { cx,
         NavBar { run: Box::new(run), building }
         main(class="px-2 flex w-full absolute top-10 bottom-0 divide-x divide-gray-400 space-x-2") {
             div(class="flex flex-col flex-1") {
-                div(class="block flex-1", ref=editor_ref)
+                EditorView {
+                    source,
+                }
             }
             div(class="flex flex-col flex-1 {}") {
-                // Loading bar container
-                div(class="h-0.5 w-full")
                 // Preview
                 iframe(class="block flex-1", srcdoc=srcdoc.get())
             }
