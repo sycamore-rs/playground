@@ -28,13 +28,30 @@ struct CompileReq<'a> {
 }
 
 #[derive(Prop)]
-struct NavBarProps<'a> {
-    run: Box<dyn FnMut() + 'a>,
+struct RunButtonProps<'a, F: FnMut() + 'a> {
+    run: F,
     building: &'a ReadSignal<bool>,
 }
 
 #[component]
-fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a>) -> View<G> {
+fn RunButton<'a, G: Html>(cx: Scope<'a>, mut props: RunButtonProps<'a, impl FnMut()>) -> View<G> {
+    view! { cx,
+        button(
+            class="inline-block ml-5 px-3 bg-green-400 rounded font-bold text-white disabled:bg-green-200",
+            on:click=move |_| (props.run)(),
+            disabled=*props.building.get()
+        ) { "Run" }
+    }
+}
+
+#[derive(Prop)]
+struct NavBarProps<'a, F: FnMut() + 'a> {
+    run: F,
+    building: &'a ReadSignal<bool>,
+}
+
+#[component]
+fn NavBar<'a, G: Html>(cx: Scope<'a>, props: NavBarProps<'a, impl FnMut()>) -> View<G> {
     view! { cx,
         nav(class="bg-gray-100 px-2 border-b border-gray-300") {
             h1(class="inline-block text-xl py-1") {
@@ -44,11 +61,7 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a>) -> View<G> {
                 span(class="font-light") { " Playground" }
             }
 
-            button(
-                class="inline-block ml-5 px-3 bg-green-400 rounded font-bold text-white disabled:bg-green-200",
-                on:click=move |_| (props.run)(),
-                disabled=*props.building.get()
-            ) { "Run" }
+            RunButton { run: props.run, building: props.building }
         }
     }
 }
@@ -103,7 +116,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
     });
 
     view! { cx,
-        NavBar { run: Box::new(run), building }
+        NavBar { run, building }
         main(class="px-2 flex w-full absolute top-10 bottom-0 divide-x divide-gray-400 space-x-2") {
             div(class="flex flex-col flex-1") {
                 EditorView {
@@ -114,7 +127,11 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                 // Preview
                 (if *show_first_run.get() {
                     view! { cx,
-                        "Press the \"Run\" button to preview the app."
+                        div {
+                            p {
+                                "Press run to preview the app."
+                            }
+                        }
                     }
                 } else {
                     view! { cx,
