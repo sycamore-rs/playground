@@ -630,6 +630,7 @@ dependencies = [
  "once_cell",
  "serde",
  "tokio",
+ "tower",
  "tower-http",
 ]
 

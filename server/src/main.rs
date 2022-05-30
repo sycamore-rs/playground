@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{
     collections::{hash_map::DefaultHasher, HashSet},
     hash::{Hash, Hasher},
@@ -5,6 +6,10 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use axum::error_handling::HandleErrorLayer;
+use axum::handler::Handler;
+use axum::http::StatusCode;
+use axum::BoxError;
 use axum::{
     http::{self, Method},
     response::Html,
@@ -15,6 +20,7 @@ use base64::encode;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::{fs, process::Command, sync::Mutex};
+use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 
 const CACHE_DIR: &str = "cache";
@@ -133,11 +139,31 @@ async fn post_compile(Json(payload): Json<CompileReq>) -> Html<String> {
     }
 }
 
+async fn handle_timeout_error(err: BoxError) -> (StatusCode, String) {
+    if err.is::<tower::timeout::error::Elapsed>() {
+        (StatusCode::REQUEST_TIMEOUT, "Request timed out".to_string())
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Internal server error: {err}"),
+        )
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let app = Router::new()
         .route("/", get(get_index))
-        .route("/compile", post(post_compile))
+        .route(
+            "/compile",
+            post(
+                post_compile.layer(
+                    ServiceBuilder::new()
+                        .layer(HandleErrorLayer::new(handle_timeout_error))
+                        .timeout(Duration::from_secs(2)),
+                ),
+            ),
+        )
         .layer(
             CorsLayer::new()
                 .allow_headers(vec![http::header::CONTENT_TYPE])
@@ -146,7 +172,7 @@ async fn main() {
         );
 
     // Run on localhost:PORT.
-    let port = std::env::var("PORT").unwrap_or("3000".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
     axum::Server::bind(&format!("0.0.0.0:{port}").parse().unwrap())
         .serve(app.into_make_service())
         .await
