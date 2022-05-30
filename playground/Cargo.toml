@@ -11,7 +11,7 @@ console_log = "0.2.0"
 gloo = "0.7.0"
 log = "0.4.16"
 serde = "1.0.136"
-sycamore = { version = "0.8.0-beta.4", features = [
+sycamore = { version = "0.8.0-beta.6", features = [
     "builder",
     "serde",
     "suspense",
