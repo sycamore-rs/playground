@@ -160,7 +160,7 @@ async fn main() {
                 post_compile.layer(
                     ServiceBuilder::new()
                         .layer(HandleErrorLayer::new(handle_timeout_error))
-                        .timeout(Duration::from_secs(2)),
+                        .timeout(Duration::from_secs(4)),
                 ),
             ),
         )

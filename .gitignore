@@ -1,6 +1,5 @@
-/target
-/client/dist
+target
+dist
 /server/cache
-/playground/dist
 
 node_modules
