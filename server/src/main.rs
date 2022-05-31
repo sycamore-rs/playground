@@ -5,12 +5,13 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use axum::error_handling::HandleErrorLayer;
+use axum::extract::Form;
 use axum::handler::Handler;
 use axum::http::{Method, StatusCode};
 use axum::routing::{get, post};
 use axum::{http, BoxError, Json, Router};
 use once_cell::sync::Lazy;
-use playground_common::{CompileRequest, CompileResponse};
+use playground_common::{CompileRequest, CompileResponse, PasteRequest};
 use tokio::{fs, process::Command, sync::Mutex};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -112,10 +113,38 @@ async fn handle_timeout_error(err: BoxError) -> (StatusCode, String) {
     if err.is::<tower::timeout::error::Elapsed>() {
         (StatusCode::REQUEST_TIMEOUT, "Request timed out".to_string())
     } else {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Internal server error: {err}"),
-        )
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{err}"))
+    }
+}
+
+async fn create_paste(code: &str) -> Result<String> {
+    let client = reqwest::Client::new();
+    let api_dev_key =
+        std::env::var("PASTEBIN_API_KEY").context("Could not get PASTEBIN_API_KEY")?;
+    let res = client
+        .post("https://pastebin.com/api/api_post.php")
+        .form(&[
+            ("api_paste_code", code),
+            ("api_dev_key", &api_dev_key),
+            ("api_option", "paste"),
+            ("api_paste_name", "playground.rs"),
+            ("api_paste_format", "rust"),
+            ("api_paste_private", "1"),
+            ("api_paste_expire_date", "N"),
+        ])
+        .send()
+        .await?;
+    let paste_url = res.text().await?;
+    Ok(paste_url)
+}
+
+async fn post_paste(Form(form): Form<PasteRequest<'_>>) -> (StatusCode, String) {
+    match create_paste(&form.code).await {
+        Ok(paste_url) => (StatusCode::OK, paste_url),
+        Err(err) => {
+            eprintln!("{err:?}");
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("{err:?}"))
+        }
     }
 }
 
@@ -133,6 +162,7 @@ async fn main() {
                 ),
             ),
         )
+        .route("/paste", post(post_paste))
         .layer(
             CorsLayer::new()
                 .allow_headers(vec![http::header::CONTENT_TYPE])

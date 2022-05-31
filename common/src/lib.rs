@@ -15,3 +15,8 @@ pub enum CompileResponse<'a> {
     },
     CompileError(String),
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PasteRequest<'a> {
+    pub code: Cow<'a, str>,
+}

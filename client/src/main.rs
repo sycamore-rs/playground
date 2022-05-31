@@ -1,10 +1,12 @@
 mod editor_view;
+mod pastebin;
 
 use std::error::Error;
 
 use gloo_net::http::Request;
 use gloo_storage::{LocalStorage, Storage};
 use js_sys::Uint8Array;
+use pastebin::new_paste;
 use playground_common::{CompileRequest, CompileResponse};
 use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
@@ -36,10 +38,18 @@ fn main() {
 struct NavBarProps<'a, F: FnMut() + 'a> {
     run: F,
     building: &'a ReadSignal<bool>,
+    source: &'a ReadSignal<String>,
 }
 
 #[component]
 fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) -> View<G> {
+    let share = move |_| {
+        spawn_local_scoped(cx, async {
+            let url = new_paste(&props.source.get()).await.unwrap();
+            log::info!("{url}");
+        });
+    };
+
     view! { cx,
         nav(class="px-2 bg-gray-100 border-gray-300 border-b flex flex-row") {
             h1(class="inline-block text-xl py-1") {
@@ -57,7 +67,7 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) 
             div(class="grow")
             button(
                 type="button",
-                on:click=move |_| todo!(),
+                on:click=share,
                 class="px-5 -my-px mr-5 bg-yellow-400 font-bold text-white"
             ) { "Share" }
         }
@@ -85,7 +95,7 @@ enum Preview {
 }
 
 #[component]
-fn App<G: Html>(cx: Scope) -> View<G> {
+fn Index<G: Html>(cx: Scope) -> View<G> {
     let preview = create_signal(cx, Preview::Initial);
     let source = create_rc_signal(String::new());
     let source_ref = create_ref(cx, source.clone());
@@ -169,7 +179,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
     });
 
     view! { cx,
-        NavBar { run, building: preview.map(cx, |p| p == &Preview::Building) }
+        NavBar { run, building: preview.map(cx, |p| p == &Preview::Building), source: source_ref }
         main(
             class="px-2 top-10 bottom-0 w-full absolute \
                 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 \
@@ -179,7 +189,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
             EditorView {
                 source,
             }
-            div(class="block h-full w-full overflow-auto") {
+            div(class="block h-full w-full pb-2 overflow-auto") {
                 (match preview.get().as_ref().clone() {
                     Preview::Initial => view! { cx,
                         div {
@@ -201,7 +211,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                     Preview::ShowCompileError { err } => view! { cx,
                         div {
                             p {
-                                "Compile error."
+                                "Compiler error."
                             }
                             pre { (err) }
                         }
@@ -217,6 +227,13 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                 })
             }
         }
+    }
+}
+
+#[component]
+fn App<G: Html>(cx: Scope) -> View<G> {
+    view! { cx,
+        Index {}
     }
 }
 
