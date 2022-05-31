@@ -66,14 +66,21 @@ async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<
             .context("call trunk")?;
 
         // Read the generated artifacts and serialize them into a `CompileResponse`.
-        let wasm = fs::read("../playground/dist/playground_bg.wasm").await?;
-        let js = fs::read_to_string("../playground/dist/playground.js").await?;
+        let wasm = fs::read("../playground/dist/playground_bg.wasm")
+            .await
+            .context("Could not read wasm artifact.")?;
+        let js = fs::read_to_string("../playground/dist/playground.js")
+            .await
+            .context("Could not read js artifact.")?;
         let res = CompileResponse::Success { wasm, js };
-        let bytes = bincode::serialize(&res)?;
+        let bytes = bincode::serialize(&res).context("Could not serialize result with bincode.")?;
 
         // Add the generated file to the cache.
         CACHE.lock().await.insert(code_hash);
-        fs::write(cache_file_name, &bytes).await?;
+        fs::create_dir_all(CACHE_DIR).await?;
+        fs::write(cache_file_name, &bytes)
+            .await
+            .context("Could not write cache file.")?;
 
         Ok(bytes)
     } else {
@@ -88,10 +95,13 @@ async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<
 async fn handle_compile(Json(payload): Json<CompileRequest>) -> (StatusCode, Vec<u8>) {
     match process_compile(payload).await {
         Ok(bytes) => (StatusCode::OK, bytes),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("{err:?}").into_bytes(),
-        ),
+        Err(err) => {
+            eprintln!("{err:?}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("{err:?}").into_bytes(),
+            )
+        }
     }
 }
 

@@ -257,34 +257,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-version"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6b0decc02f4636b9ccad390dcbe77b722a77efedfa393caf8379a51d5c61899"
-dependencies = [
- "git-version-macro",
- "proc-macro-hack",
-]
-
-[[package]]
-name = "git-version-macro"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe69f1cbdb6e28af2bac214e943b99ce8a0a06b447d15d3e61161b0423139f3f"
-dependencies = [
- "proc-macro-hack",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "glob"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
-
-[[package]]
 name = "gloo-net"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -645,8 +617,6 @@ dependencies = [
  "axum",
  "base64",
  "bincode",
- "git-version",
- "glob",
  "once_cell",
  "playground-common",
  "serde",
@@ -654,12 +624,6 @@ dependencies = [
  "tower",
  "tower-http",
 ]
-
-[[package]]
-name = "proc-macro-hack"
-version = "0.5.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbf0c48bc1d91375ae5c3cd81e3722dff1abcf81a30960240640d223f59fe0e5"
 
 [[package]]
 name = "proc-macro2"
