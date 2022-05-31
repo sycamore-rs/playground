@@ -223,8 +223,11 @@ fn Index<G: Html>(cx: Scope, initial_code: String) -> View<G> {
 #[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
     // If we have a paste id in the query parameter, get the code from the pastebin.
-    let url_params = UrlSearchParams::new_with_str;
-    // let paste_id = ;
+    let url_params =
+        UrlSearchParams::new_with_str(&web_sys::window().unwrap().location().href().unwrap())
+            .unwrap();
+    let paste_id = url_params.get("paste");
+    let example_name = url_params.get("example");
 
     // Get saved code from local storage or initialize with default code.
     // We get the code before writing the new code to local storage in the effect below.
