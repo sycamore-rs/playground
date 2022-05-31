@@ -30,7 +30,7 @@ fn hash_str(s: &str) -> String {
 
 /// Compile the code and store the result in a cache. Returns a serialized version of `CompileResponse`.
 /// If the code has already been compiled and is found in the cache, returns the cached binary instead of recompiling.
-async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<u8>> {
+async fn process_compile(CompileRequest { code }: CompileRequest<'_>) -> Result<Vec<u8>> {
     static LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
     static CACHE: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
@@ -47,7 +47,7 @@ async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<
     // Acquire the lock to prevent multiple requests from compiling at the same time.
     let _guard = LOCK.lock().await;
 
-    fs::write("../playground/src/main.rs", code).await?;
+    fs::write("../playground/src/main.rs", code.as_bytes()).await?;
 
     let cargo_build = Command::new("cargo")
         .arg("build")
@@ -72,7 +72,10 @@ async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<
         let js = fs::read_to_string("../playground/dist/playground.js")
             .await
             .context("Could not read js artifact.")?;
-        let res = CompileResponse::Success { wasm, js };
+        let res = CompileResponse::Success {
+            wasm: wasm.into(),
+            js: js.into(),
+        };
         let bytes = bincode::serialize(&res).context("Could not serialize result with bincode.")?;
 
         // Add the generated file to the cache.
@@ -92,7 +95,7 @@ async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<
     }
 }
 
-async fn handle_compile(Json(payload): Json<CompileRequest>) -> (StatusCode, Vec<u8>) {
+async fn handle_compile(Json(payload): Json<CompileRequest<'_>>) -> (StatusCode, Vec<u8>) {
     match process_compile(payload).await {
         Ok(bytes) => (StatusCode::OK, bytes),
         Err(err) => {
