@@ -17,4 +17,4 @@ playground-common = { path = "../common" }
 serde = { version = "1.0.137", features = ["derive"] }
 sycamore = { version = "0.8.0-beta.6", features = ["suspense"] }
 wasm-bindgen = "0.2.80"
-web-sys = { version = "0.3.57", features = ["KeyboardEvent", "HtmlDocument", "HtmlIFrameElement"] }
+web-sys = { version = "0.3.57", features = ["KeyboardEvent", "UrlSearchParams", "HtmlDocument", "HtmlIFrameElement"] }

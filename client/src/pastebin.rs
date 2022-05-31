@@ -14,3 +14,7 @@ pub async fn new_paste(code: &str) -> Result<String, Box<dyn Error>> {
         .text()
         .await?)
 }
+
+pub async fn get_paste(url: &str) -> Result<String, Box<dyn Error>> {
+    Ok(Request::get(url).send().await?.text().await?)
+}

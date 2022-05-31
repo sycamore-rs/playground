@@ -12,7 +12,7 @@ use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
 use wasm_bindgen::prelude::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{HtmlDocument, HtmlIFrameElement};
+use web_sys::{HtmlDocument, HtmlIFrameElement, UrlSearchParams};
 
 use crate::editor_view::EditorView;
 
@@ -74,7 +74,7 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) 
     }
 }
 
-async fn send_compile_req(code: &str) -> Result<CompileResponse, Box<dyn Error>> {
+async fn send_compile_req(code: &str) -> Result<CompileResponse<'_>, Box<dyn Error>> {
     let bytes = Request::post(&format!("{BACKEND_URL}/compile"))
         .json(&CompileRequest { code: code.into() })?
         .send()
@@ -95,9 +95,9 @@ enum Preview {
 }
 
 #[component]
-fn Index<G: Html>(cx: Scope) -> View<G> {
+fn Index<G: Html>(cx: Scope, initial_code: String) -> View<G> {
     let preview = create_signal(cx, Preview::Initial);
-    let source = create_rc_signal(String::new());
+    let source = create_rc_signal(initial_code);
     let source_ref = create_ref(cx, source.clone());
     let iframe_ref = create_node_ref(cx);
 
@@ -162,16 +162,6 @@ fn Index<G: Html>(cx: Scope) -> View<G> {
         });
     };
 
-    // Get saved code from local storage or initialize with default code.
-    // We get the code before writing the new code to local storage in the effect below.
-    let code: String = LocalStorage::get("CODE").unwrap_or_else(|_| String::new());
-    let code = if code.trim() == "" {
-        DEFAULT_EDITOR_CODE.to_string()
-    } else {
-        code
-    };
-    source.set(code);
-
     // Save changes to code to local storage.
     create_effect(cx, || {
         LocalStorage::set("CODE", source_ref.get().as_ref())
@@ -232,8 +222,21 @@ fn Index<G: Html>(cx: Scope) -> View<G> {
 
 #[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
+    // If we have a paste id in the query parameter, get the code from the pastebin.
+    let url_params = UrlSearchParams::new_with_str;
+    // let paste_id = ;
+
+    // Get saved code from local storage or initialize with default code.
+    // We get the code before writing the new code to local storage in the effect below.
+    let initial_code: String = LocalStorage::get("CODE").unwrap_or_else(|_| String::new());
+    let initial_code = if initial_code.trim() == "" {
+        DEFAULT_EDITOR_CODE.to_string()
+    } else {
+        initial_code
+    };
+
     view! { cx,
-        Index {}
+        Index(initial_code)
     }
 }
 
