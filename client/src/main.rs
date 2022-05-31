@@ -33,40 +33,33 @@ fn main() {
 "#;
 
 #[derive(Prop)]
-struct RunButtonProps<'a, F: FnMut() + 'a> {
-    run: F,
-    building: &'a ReadSignal<bool>,
-}
-
-#[component]
-fn RunButton<'a, G: Html>(cx: Scope<'a>, mut props: RunButtonProps<'a, impl FnMut()>) -> View<G> {
-    view! { cx,
-        button(
-            class="inline-block ml-5 px-3 bg-green-400 rounded font-bold text-white disabled:bg-green-200",
-            on:click=move |_| (props.run)(),
-            disabled=*props.building.get()
-        ) { "Run" }
-    }
-}
-
-#[derive(Prop)]
 struct NavBarProps<'a, F: FnMut() + 'a> {
     run: F,
     building: &'a ReadSignal<bool>,
 }
 
 #[component]
-fn NavBar<'a, G: Html>(cx: Scope<'a>, props: NavBarProps<'a, impl FnMut()>) -> View<G> {
+fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) -> View<G> {
     view! { cx,
-        nav(class="bg-gray-100 px-2 border-b border-gray-300") {
+        nav(class="px-2 bg-gray-100 border-gray-300 border-b flex flex-row") {
             h1(class="inline-block text-xl py-1") {
                 span(
                     class="font-extrabold bg-gradient-to-r from-orange-300 to-red-400 text-transparent bg-clip-text"
                 ) { "Sycamore" }
                 span(class="font-light") { " Playground" }
             }
-
-            RunButton { run: props.run, building: props.building }
+            button(
+                type="button",
+                on:click=move |_| (props.run)(),
+                disabled=*props.building.get(),
+                class="px-5 -my-px ml-10 bg-green-400 font-bold text-white disabled:bg-green-200"
+            ) { "Run" }
+            div(class="grow")
+            button(
+                type="button",
+                on:click=move |_| todo!(),
+                class="px-5 -my-px mr-5 bg-yellow-400 font-bold text-white"
+            ) { "Share" }
         }
     }
 }
