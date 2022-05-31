@@ -6,12 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bincode = "1.3.3"
 console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
 gloo-net = "0.2.0"
 gloo-storage = "0.2.1"
+js-sys = "0.3.57"
 log = "0.4.17"
+playground-common = { path = "../common" }
 serde = { version = "1.0.137", features = ["derive"] }
 sycamore = { version = "0.8.0-beta.6", features = ["suspense"] }
 wasm-bindgen = "0.2.80"
-web-sys = { version = "0.3.57", features = ["KeyboardEvent"] }
+web-sys = { version = "0.3.57", features = ["KeyboardEvent", "HtmlDocument", "HtmlIFrameElement"] }

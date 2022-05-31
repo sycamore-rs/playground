@@ -474,6 +474,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "gloo",
+ "js-sys",
  "log",
  "serde",
  "sycamore",

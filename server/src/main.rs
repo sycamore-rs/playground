@@ -1,24 +1,16 @@
+use std::collections::{hash_map::DefaultHasher, HashSet};
+use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 use std::time::Duration;
-use std::{
-    collections::{hash_map::DefaultHasher, HashSet},
-    hash::{Hash, Hasher},
-    path::{Path, PathBuf},
-};
 
 use anyhow::{Context, Result};
 use axum::error_handling::HandleErrorLayer;
 use axum::handler::Handler;
-use axum::http::StatusCode;
-use axum::BoxError;
-use axum::{
-    http::{self, Method},
-    response::Html,
-    routing::{get, post},
-    Json, Router,
-};
-use base64::encode;
+use axum::http::{Method, StatusCode};
+use axum::routing::{get, post};
+use axum::{http, BoxError, Json, Router};
 use once_cell::sync::Lazy;
-use serde::Deserialize;
+use playground_common::{CompileRequest, CompileResponse};
 use tokio::{fs, process::Command, sync::Mutex};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -29,11 +21,6 @@ async fn get_index() -> &'static str {
     "Sycamore playground compiler service. Source code: https://github.com/sycamore-rs/playground"
 }
 
-#[derive(Deserialize)]
-struct CompileReq {
-    code: String,
-}
-
 fn hash_str(s: &str) -> String {
     let mut hasher = DefaultHasher::new();
     s.hash(&mut hasher);
@@ -41,18 +28,23 @@ fn hash_str(s: &str) -> String {
     base64::encode_config(hash.to_le_bytes(), base64::URL_SAFE)
 }
 
-async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
+/// Compile the code and store the result in a cache. Returns a serialized version of `CompileResponse`.
+/// If the code has already been compiled and is found in the cache, returns the cached binary instead of recompiling.
+async fn process_compile(CompileRequest { code }: CompileRequest) -> Result<Vec<u8>> {
     static LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
     static CACHE: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
     let code_hash = hash_str(&code);
-    let cache_file_name: PathBuf = [CACHE_DIR, &format!("{code_hash}.html")].iter().collect();
+    let cache_file_name: PathBuf = [CACHE_DIR, &format!("{code_hash}.bin")].iter().collect();
     // First check if we have a cached version.
     if CACHE.lock().await.contains(&code_hash) {
+        // Deserialize the cached file into a `CompileResponse`.
+        let res = fs::read(cache_file_name).await?;
         // Return the cached file.
-        return Ok(Html(fs::read_to_string(cache_file_name).await?));
+        return Ok(res);
     }
 
+    // Acquire the lock to prevent multiple requests from compiling at the same time.
     let _guard = LOCK.lock().await;
 
     fs::write("../playground/src/main.rs", code).await?;
@@ -66,76 +58,40 @@ async fn compile(CompileReq { code }: CompileReq) -> Result<Html<String>> {
         .await?;
 
     if cargo_build.status.success() {
+        // Call trunk to orchestrate wasm-bindgen and js glue code generation.
         let _output = Command::new("trunk")
-            .arg("build")
-            .arg("../playground/index.html")
+            .args(["build", "../playground/index.html", "--filehash", "false"])
             .output()
             .await
             .context("call trunk")?;
 
-        let res = pack_into_html(&cache_file_name).await;
+        // Read the generated artifacts and serialize them into a `CompileResponse`.
+        let wasm = fs::read("../playground/dist/playground_bg.wasm").await?;
+        let js = fs::read_to_string("../playground/dist/playground.js").await?;
+        let res = CompileResponse::Success { wasm, js };
+        let bytes = bincode::serialize(&res)?;
+
         // Add the generated file to the cache.
         CACHE.lock().await.insert(code_hash);
-        res
+        fs::write(cache_file_name, &bytes).await?;
+
+        Ok(bytes)
     } else {
-        Err(anyhow::anyhow!(
-            "compile error:\n{}",
-            String::from_utf8_lossy(&cargo_build.stderr)
-        ))
+        // Compile error. We don't want to return `Err(_)` because we want to serialize the error into a `CompileResponse`.
+        let res =
+            CompileResponse::CompileError(String::from_utf8_lossy(&cargo_build.stderr).to_string());
+        let bytes = bincode::serialize(&res)?;
+        Ok(bytes)
     }
 }
 
-async fn pack_into_html(cache_file_name: &Path) -> Result<Html<String>> {
-    // wasm file should be in playground/dist
-    let mut wasm_files = glob::glob("../playground/dist/*.wasm")
-        .context("glob the wasm binary in playground/dist")?;
-    let wasm_file = wasm_files
-        .next()
-        .context("should have exactly 1 wasm file in playground/dist")??;
-    let wasm_file_buf = fs::read(wasm_file).await?;
-    let wasm_encoded = encode(&wasm_file_buf);
-    let mut js_files =
-        glob::glob("../playground/dist/*.js").context("glob the js script in playground/dist")?;
-    let js_file = js_files
-        .next()
-        .context("should have exactly 1 js file in playground/dist")??;
-    let js_file_buf = fs::read_to_string(js_file).await?;
-    let html = format!(
-        r#"
-    <!DOCTYPE html>
-    <html>
-        <head>
-            <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
-
-            <script type="module">
-                {js_file_buf}
-
-                (async () => {{
-                    const data = "data:application/wasm;base64,{wasm_encoded}";
-                    await init(data);
-                }})();
-            </script>
-        </head>
-        <body>
-            <noscript>You need to enable Javascript to run this interactive app.</noscript>
-        </body>
-    </html>
-    "#
-    );
-    fs::create_dir_all(CACHE_DIR)
-        .await
-        .context("recursively create cache directory")?;
-    fs::write(cache_file_name, &html)
-        .await
-        .context("writing html file to cache")?;
-
-    Ok(Html(html))
-}
-
-async fn post_compile(Json(payload): Json<CompileReq>) -> Html<String> {
-    match compile(payload).await {
-        Ok(out) => out,
-        Err(err) => Html(format!("{:?}", err)),
+async fn handle_compile(Json(payload): Json<CompileRequest>) -> (StatusCode, Vec<u8>) {
+    match process_compile(payload).await {
+        Ok(bytes) => (StatusCode::OK, bytes),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("{err:?}").into_bytes(),
+        ),
     }
 }
 
@@ -157,7 +113,7 @@ async fn main() {
         .route(
             "/compile",
             post(
-                post_compile.layer(
+                handle_compile.layer(
                     ServiceBuilder::new()
                         .layer(HandleErrorLayer::new(handle_timeout_error))
                         .timeout(Duration::from_secs(4)),

@@ -2,13 +2,21 @@ mod editor_view;
 
 use gloo_net::http::Request;
 use gloo_storage::{LocalStorage, Storage};
-use serde::Serialize;
+use js_sys::Uint8Array;
+use playground_common::{CompileRequest, CompileResponse};
 use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
+use wasm_bindgen::prelude::Closure;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{HtmlDocument, HtmlIFrameElement};
 
 use crate::editor_view::EditorView;
 
-static BACKEND_URL: &str = "https://sycamore-playground.herokuapp.com";
+static BACKEND_URL: &str = if cfg!(debug_assertions) {
+    "http://localhost:3000"
+} else {
+    "https://sycamore-playground.herokuapp.com"
+};
 
 static DEFAULT_EDITOR_CODE: &str = r#"use sycamore::prelude::*;
 
@@ -21,11 +29,6 @@ fn main() {
     );
 }
 "#;
-
-#[derive(Serialize)]
-struct CompileReq<'a> {
-    code: &'a str,
-}
 
 #[derive(Prop)]
 struct RunButtonProps<'a, F: FnMut() + 'a> {
@@ -68,33 +71,76 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, props: NavBarProps<'a, impl FnMut()>) -> V
 
 #[component]
 fn App<G: Html>(cx: Scope) -> View<G> {
-    let srcdoc = create_signal(cx, String::new());
     let building = create_signal(cx, false);
     let show_first_run = create_signal(cx, true);
     let source = create_rc_signal(String::new());
     let source_ref = create_ref(cx, source.clone());
+    let iframe_ref = create_node_ref(cx);
 
     let run = move || {
-        spawn_local_scoped(cx, async {
+        spawn_local_scoped(cx, async move {
             if !*building.get() {
                 building.set(true);
-                let html = Request::post(&format!("{BACKEND_URL}/compile"))
-                    .json(&CompileReq {
-                        code: &source_ref.get(),
+                show_first_run.set(false);
+                let bytes = Request::post(&format!("{BACKEND_URL}/compile"))
+                    .json(&CompileRequest {
+                        code: source_ref.get().to_string(),
                     })
                     .unwrap()
                     .send()
                     .await
                     .unwrap()
-                    .text()
+                    .binary()
                     .await
                     .unwrap();
+                // Deserialize into a `CompileResponse`.
+                let res: CompileResponse =
+                    bincode::deserialize(&bytes).expect("could not deserialize CompileResponse");
 
-                srcdoc.set(html);
+                match res {
+                    CompileResponse::Success { js, wasm } => {
+                        // Update iframe.
+                        let iframe_src = format!(
+                            r#"<!DOCTYPE html>
+                        <html>
+                            <head>
+                                <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+                                <script type="module">
+                                    {js}
+                                    window.init = init;
+                                </script>
+                            </head>
+                            <body>
+                                <noscript>You need to enable Javascript to run this interactive app.</noscript>
+                            </body>
+                        </html>"#
+                        );
+                        let window = iframe_ref
+                            .get::<DomNode>()
+                            .unchecked_into::<HtmlIFrameElement>()
+                            .content_window()
+                            .unwrap();
+                        let doc = window.document().unwrap().unchecked_into::<HtmlDocument>();
+                        doc.open().unwrap();
+                        doc.write(&JsValue::from(iframe_src).into()).unwrap();
+                        doc.close().unwrap();
+                        window.clone().set_onload(Some(
+                            &Closure::wrap(Box::new(move || {
+                                let init = js_sys::Reflect::get(&window, &"init".into()).unwrap();
+                                let init: js_sys::Function = init.unchecked_into();
+                                init.call1(&window, &Uint8Array::from(&*wasm).into())
+                                    .unwrap();
+                            }) as Box<dyn FnMut()>)
+                            .into_js_value()
+                            .unchecked_into(),
+                        ));
+                    }
+                    CompileResponse::CompileError(_err) => {
+                        // TODO
+                    }
+                };
+
                 building.set(false);
-                if *show_first_run.get() {
-                    show_first_run.set(false);
-                }
             }
         });
     };
@@ -135,7 +181,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                     }
                 } else {
                     view! { cx,
-                        iframe(class="block flex-1", srcdoc=srcdoc.get())
+                        iframe(class="block flex-1", ref=iframe_ref)
                     }
                 })
             }
