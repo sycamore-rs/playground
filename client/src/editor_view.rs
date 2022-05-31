@@ -35,6 +35,6 @@ pub fn EditorView<G: Html>(cx: Scope, props: EditorViewProps) -> View<G> {
     });
 
     view! { cx,
-        div(class="block flex-1", ref=editor_ref)
+        div(class="block h-full overflow-auto", ref=editor_ref)
     }
 }

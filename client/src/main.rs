@@ -177,13 +177,16 @@ fn App<G: Html>(cx: Scope) -> View<G> {
 
     view! { cx,
         NavBar { run, building: preview.map(cx, |p| p == &Preview::Building) }
-        main(class="px-2 flex w-full absolute top-10 bottom-0 divide-x divide-gray-400 space-x-2") {
-            div(class="flex flex-col flex-1") {
-                EditorView {
-                    source,
-                }
+        main(
+            class="px-2 top-10 bottom-0 w-full absolute \
+                grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 \
+                divide-y md:divide-y-0 md:divide-x divide-gray-400 space-y-2 md:space-x-2 \
+                overflow-hidden"
+        ) {
+            EditorView {
+                source,
             }
-            div(class="flex flex-col flex-1 {}") {
+            div(class="block h-full w-full overflow-auto") {
                 (match preview.get().as_ref().clone() {
                     Preview::Initial => view! { cx,
                         div {
@@ -200,7 +203,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                         }
                     },
                     Preview::ShowIFrame => view! { cx,
-                        iframe(class="block flex-1", ref=iframe_ref)
+                        iframe(class="h-full w-full", title="preview", ref=iframe_ref)
                     },
                     Preview::ShowCompileError { err } => view! { cx,
                         div {
