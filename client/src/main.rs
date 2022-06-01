@@ -15,6 +15,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlDocument, HtmlIFrameElement, UrlSearchParams};
 
 use crate::editor_view::EditorView;
+use crate::pastebin::get_paste;
 
 static BACKEND_URL: &str = if cfg!(debug_assertions) {
     "http://localhost:3000"
@@ -221,21 +222,26 @@ fn Index<G: Html>(cx: Scope, initial_code: String) -> View<G> {
 }
 
 #[component]
-fn App<G: Html>(cx: Scope) -> View<G> {
+async fn App<G: Html>(cx: Scope<'_>) -> View<G> {
     // If we have a paste id in the query parameter, get the code from the pastebin.
     let url_params =
         UrlSearchParams::new_with_str(&web_sys::window().unwrap().location().href().unwrap())
             .unwrap();
-    let paste_id = url_params.get("paste");
-    let example_name = url_params.get("example");
-
-    // Get saved code from local storage or initialize with default code.
-    // We get the code before writing the new code to local storage in the effect below.
-    let initial_code: String = LocalStorage::get("CODE").unwrap_or_else(|_| String::new());
-    let initial_code = if initial_code.trim() == "" {
-        DEFAULT_EDITOR_CODE.to_string()
+    let initial_code = if let Some(paste_id) = url_params.get("paste") {
+        get_paste(&format!("https://pastebin.com/raw/{paste_id}"))
+            .await
+            .expect("could not fetch from pastebin")
+    } else if let Some(_example_name) = url_params.get("example") {
+        todo!("fetch example from github")
     } else {
-        initial_code
+        // Get saved code from local storage or initialize with default code.
+        // We get the code before writing the new code to local storage in the effect below.
+        let storage: String = LocalStorage::get("CODE").unwrap_or_else(|_| String::new());
+        if storage.trim() == "" {
+            DEFAULT_EDITOR_CODE.to_string()
+        } else {
+            storage
+        }
     };
 
     view! { cx,
