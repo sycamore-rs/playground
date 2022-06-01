@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use axum::error_handling::HandleErrorLayer;
-use axum::extract::Form;
+use axum::extract::{Form, Path};
 use axum::handler::Handler;
 use axum::http::{Method, StatusCode};
 use axum::routing::{get, post};
@@ -138,8 +138,25 @@ async fn create_paste(code: &str) -> Result<String> {
     Ok(paste_url)
 }
 
+async fn fetch_paste(id: &str) -> Result<String> {
+    Ok(reqwest::get(&format!("https://pastebin.com/raw/{id}"))
+        .await?
+        .text()
+        .await?)
+}
+
 async fn post_paste(Form(form): Form<PasteRequest<'_>>) -> (StatusCode, String) {
     match create_paste(&form.code).await {
+        Ok(paste_url) => (StatusCode::OK, paste_url),
+        Err(err) => {
+            eprintln!("{err:?}");
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("{err:?}"))
+        }
+    }
+}
+
+async fn get_paste(Path(paste_id): Path<String>) -> (StatusCode, String) {
+    match fetch_paste(&paste_id).await {
         Ok(paste_url) => (StatusCode::OK, paste_url),
         Err(err) => {
             eprintln!("{err:?}");
@@ -163,6 +180,7 @@ async fn main() {
             ),
         )
         .route("/paste", post(post_paste))
+        .route("/paste/:paste_id", get(get_paste))
         .layer(
             CorsLayer::new()
                 .allow_headers(vec![http::header::CONTENT_TYPE])

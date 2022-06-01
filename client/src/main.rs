@@ -225,10 +225,12 @@ fn Index<G: Html>(cx: Scope, initial_code: String) -> View<G> {
 async fn App<G: Html>(cx: Scope<'_>) -> View<G> {
     // If we have a paste id in the query parameter, get the code from the pastebin.
     let url_params =
-        UrlSearchParams::new_with_str(&web_sys::window().unwrap().location().href().unwrap())
+        UrlSearchParams::new_with_str(&web_sys::window().unwrap().location().search().unwrap())
             .unwrap();
     let initial_code = if let Some(paste_id) = url_params.get("paste") {
-        get_paste(&format!("https://pastebin.com/raw/{paste_id}"))
+        let url = format!("{BACKEND_URL}/paste/{}", paste_id);
+        log::info!("Loading code from {url}");
+        get_paste(&url)
             .await
             .expect("could not fetch from pastebin")
     } else if let Some(_example_name) = url_params.get("example") {
