@@ -8,14 +8,14 @@ edition = "2021"
 [dependencies]
 console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
-gloo = "0.7.0"
-js-sys = "0.3.57"
-log = "0.4.16"
-serde = "1.0.136"
-sycamore = { version = "0.8.0-beta.6", features = ["serde", "suspense", "ssr"] }
-wasm-bindgen = "0.2.80"
-wasm-bindgen-futures = "0.4.30"
-web-sys = "0.3.57"
+gloo = "0.8.0"
+js-sys = "0.3.58"
+log = "0.4.17"
+serde = "1.0.139"
+sycamore = { version = "0.8.0-beta.7", features = ["serde", "suspense", "ssr"] }
+wasm-bindgen = "0.2.81"
+wasm-bindgen-futures = "0.4.31"
+web-sys = "0.3.58"
 
 # Optimize dependencies by default.
 [profile.dev.package."*"]

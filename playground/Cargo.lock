@@ -184,9 +184,9 @@ dependencies = [
 
 [[package]]
 name = "gloo"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03e691526c3972d1fda35453f6df29925edea014dc75a2dede7661527e9439f0"
+checksum = "3a4bef6b277b3ab073253d4bca60761240cf8d6998f4bd142211957b69a61b20"
 dependencies = [
  "gloo-console",
  "gloo-dialogs",
@@ -329,9 +329,9 @@ dependencies = [
 
 [[package]]
 name = "gloo-worker"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c843b9a46d07485026f030be7bd008580a12a2920fea837745a440a3b0c97cb"
+checksum = "9caac1b89bbe1e1454bb23e4d046a3fc92438ae2e95fb429c41685789e1fcbaa"
 dependencies = [
  "anymap2",
  "bincode",
@@ -339,8 +339,8 @@ dependencies = [
  "gloo-utils",
  "js-sys",
  "serde",
- "slab",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
@@ -377,18 +377,12 @@ checksum = "112c678d4050afce233f4f2852bb2eb519230b3cf12f33585275537d7e41578d"
 
 [[package]]
 name = "js-sys"
-version = "0.3.57"
+version = "0.3.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "671a26f820db17c2a2750743f1dd03bafd15b98c9f30c7c2628c024c05d73397"
+checksum = "258451ab10b34f8af53416d1fdab72c22e805f0c92a1136d59470ec0b11138b2"
 dependencies = [
  "wasm-bindgen",
 ]
-
-[[package]]
-name = "lazy_static"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
@@ -509,9 +503,9 @@ checksum = "f3f6f92acf49d1b98f7a81226834412ada05458b7364277387724a237f062695"
 
 [[package]]
 name = "serde"
-version = "1.0.137"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61ea8d54c77f8315140a05f4c7237403bf38b72704d031543aa1d16abbf517d1"
+checksum = "fc855a42c7967b7c369eb5860f7164ef1f6f81c20c7cc1141f2a604e18723b03"
 dependencies = [
  "serde_derive",
 ]
@@ -530,9 +524,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.137"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f26faba0c3959972377d3b2d306ee9f71faee9714294e41bb777f83f88578be"
+checksum = "6f2122636b9fe3b81f1cb25099fcf2d3f542cdb1d45940d56c713158884a05da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -585,9 +579,9 @@ checksum = "f2dd574626839106c320a323308629dcb1acfc96e32a8cba364ddc61ac23ee83"
 
 [[package]]
 name = "sycamore"
-version = "0.8.0-beta.6"
+version = "0.8.0-beta.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28742333c3596d915883adbf5fd7546860e46fc9e7563e17da07fb6950151992"
+checksum = "3a3fad8d7500e6f00f7415f3f3b4d7c465b9edce7eaa9f2d725ced0f99fae3c2"
 dependencies = [
  "ahash",
  "futures",
@@ -608,9 +602,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-core"
-version = "0.8.0-beta.6"
+version = "0.8.0-beta.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afe27c8724090ddb343ad134a1ba87c58bc3962060d50422cd5514246dd3ea8f"
+checksum = "5e3f2be6d4d8aaaae4ab9e7ce3414555dfb0675dfd5b02d733a57f448578f48d"
 dependencies = [
  "ahash",
  "sycamore-reactive",
@@ -618,9 +612,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-futures"
-version = "0.8.0-beta.6"
+version = "0.8.0-beta.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "565c3d3e4b1ed51f7e10c059d9c1d6791c98b5189b5ed768baa33d0f69994f96"
+checksum = "faebade534e638217448ebc6b4cc7a52471ce055a04090e9e628e783bf629e4e"
 dependencies = [
  "futures",
  "sycamore-reactive",
@@ -630,9 +624,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-macro"
-version = "0.8.0-beta.6"
+version = "0.8.0-beta.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "789fd337951cb59e322fc620683fec6a552494f58e7ac486797959edc3c9aed4"
+checksum = "bd6ece3ca423f48a9cb6e8a63478c83553cd4dc934de6f1aeb4b5ddb5d3e4cc2"
 dependencies = [
  "once_cell",
  "proc-macro2",
@@ -642,10 +636,11 @@ dependencies = [
 
 [[package]]
 name = "sycamore-reactive"
-version = "0.8.0-beta.6"
+version = "0.8.0-beta.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79cee4913578c538f5a7c96771ed402198555307c4854bf65c350603059fdf5f"
+checksum = "882dc1ea88a82d9fbeeca12d2580094b4919b63b6aa1b102b29db53ffb64f6a3"
 dependencies = [
+ "ahash",
  "bumpalo",
  "indexmap",
  "serde",
@@ -655,9 +650,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-web"
-version = "0.8.0-beta.6"
+version = "0.8.0-beta.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42d7ec1b21434e694254f4a3dce23ce5b1388376c584ea44329ed8855b0d2be2"
+checksum = "6be07a7ff3eed2e80c25efd24f4bec0a6eeca48b32f128d83ba4221ae3230f0d"
 dependencies = [
  "html-escape",
  "indexmap",
@@ -736,9 +731,9 @@ checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.80"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27370197c907c55e3f1a9fbe26f44e937fe6451368324e009cba39e139dc08ad"
+checksum = "fc7652e3f6c4706c8d9cd54832c4a4ccb9b5336e2c3bd154d5cccfbf1c1f5f7d"
 dependencies = [
  "cfg-if",
  "serde",
@@ -748,13 +743,13 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.80"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e04185bfa3a779273da532f5025e33398409573f348985af9a1cbf3774d3f4"
+checksum = "662cd44805586bd52971b9586b1df85cdbbd9112e4ef4d8f41559c334dc6ac3f"
 dependencies = [
  "bumpalo",
- "lazy_static",
  "log",
+ "once_cell",
  "proc-macro2",
  "quote",
  "syn",
@@ -763,9 +758,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.30"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f741de44b75e14c35df886aff5f1eb73aa114fa5d4d00dcd37b5e01259bf3b2"
+checksum = "fa76fb221a1f8acddf5b54ace85912606980ad661ac7a503b4570ffd3a624dad"
 dependencies = [
  "cfg-if",
  "js-sys",
@@ -775,9 +770,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.80"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17cae7ff784d7e83a2fe7611cfe766ecf034111b49deb850a3dc7699c08251f5"
+checksum = "b260f13d3012071dfb1512849c033b1925038373aea48ced3012c09df952c602"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -785,9 +780,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.80"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99ec0dc7a4756fffc231aab1b9f2f578d23cd391390ab27f952ae0c9b3ece20b"
+checksum = "5be8e654bdd9b79216c2929ab90721aa82faf65c48cdf08bdc4e7f51357b80da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -798,15 +793,15 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.80"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d554b7f530dee5964d9a9468d95c1f8b8acae4f282807e7d27d4b03099a46744"
+checksum = "6598dd0bd3c7d51095ff6531a5b23e02acdc81804e30d8f07afb77b7215a140a"
 
 [[package]]
 name = "web-sys"
-version = "0.3.57"
+version = "0.3.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b17e741662c70c8bd24ac5c5b18de314a2c26c32bf8346ee1e6f53de919c283"
+checksum = "ed055ab27f941423197eb86b2035720b1a3ce40504df082cac2ecc6ed73335a1"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
