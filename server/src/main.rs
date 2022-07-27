@@ -51,6 +51,7 @@ async fn process_compile(CompileRequest { code }: CompileRequest<'_>) -> Result<
     fs::write("../playground/src/main.rs", code.as_bytes()).await?;
 
     let cargo_build = Command::new("cargo")
+        .env_remove("PASTEBIN_API_KEY")
         .arg("build")
         .arg("--target")
         .arg("wasm32-unknown-unknown")
@@ -61,6 +62,7 @@ async fn process_compile(CompileRequest { code }: CompileRequest<'_>) -> Result<
     if cargo_build.status.success() {
         // Call trunk to orchestrate wasm-bindgen and js glue code generation.
         let _output = Command::new("trunk")
+            .env_remove("PASTEBIN_API_KEY")
             .args(["build", "../playground/index.html", "--filehash", "false"])
             .output()
             .await
