@@ -44,10 +44,24 @@ struct NavBarProps<'a, F: FnMut() + 'a> {
 
 #[component]
 fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) -> View<G> {
+    let share_modal_open = create_signal(cx, false);
+    let share_paste_id = create_signal(cx, String::new());
+    let share_pastebin_url = share_paste_id.map(cx, |id| format!("https://pastebin.com/{id}"));
+    let share_playground_url = share_paste_id.map(cx, |id| {
+        format!("https://sycamore-rs.github.io/playground?paste={id}")
+    });
     let share = move |_| {
         spawn_local_scoped(cx, async {
-            let url = new_paste(&props.source.get()).await.unwrap();
-            log::info!("{url}");
+            let url = new_paste(&props.source.get())
+                .await
+                .expect("could not upload code snippet to pastebin");
+            log::info!("Generated pastebin at {url}");
+            let id = url
+                .split('/')
+                .last()
+                .expect("id should be last param of url");
+            share_modal_open.set(true);
+            share_paste_id.set(id.to_string());
         });
     };
 
@@ -63,14 +77,34 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) 
                 type="button",
                 on:click=move |_| (props.run)(),
                 disabled=*props.building.get(),
-                class="px-5 -my-px ml-10 bg-green-400 font-bold text-white disabled:bg-green-200"
+                class="px-5 my-1 ml-10 bg-green-400 font-bold text-white disabled:bg-green-200 rounded shadow-inner"
             ) { "Run" }
             div(class="grow")
             button(
                 type="button",
                 on:click=share,
-                class="px-5 -my-px mr-5 bg-yellow-400 font-bold text-white"
+                class="px-5 my-1 mr-5 bg-yellow-400 font-bold text-white rounded shadow-inner"
             ) { "Share" }
+        }
+        // Background dim.
+        div(class=format!("fixed inset-0 w-full h-full z-40 bg-gray-500 bg-opacity-75 transition-opacity {}", if *share_modal_open.get() { "" } else { "hidden" }))
+        // Share modal.
+        div(
+            class=format!("fixed inset-0 w-full z-50 {}", if *share_modal_open.get() { "" } else { "hidden" }),
+            role="dialog",
+            aria-modal=true,
+        ) {
+            // Modal content.
+            div(class="bg-white container mx-auto mt-5 px-5 py-3 rounded shadow-lg") {
+                h1(class="text-xl font-bold") { "Share" }
+                p { "Pastebin URL: "
+                    a(class="text-blue-600 underline", href=share_pastebin_url.get()) { (share_pastebin_url.get()) }
+                }
+                p { "Runnable playground URL: "
+                    a(class="text-blue-600 underline", href=share_playground_url.get()) { (share_playground_url.get()) }
+                }
+                button(type="button", class="px-5 bg-yellow-400 font-bold text-white rounded shadow-inner", on:click=|_| share_modal_open.set(false)) { "Done" }
+            }
         }
     }
 }
