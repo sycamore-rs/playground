@@ -784,6 +784,7 @@ dependencies = [
  "playground-common",
  "reqwest",
  "serde",
+ "serde_json",
  "tokio",
  "tower",
  "tower-http",

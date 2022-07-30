@@ -45,23 +45,21 @@ struct NavBarProps<'a, F: FnMut() + 'a> {
 #[component]
 fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) -> View<G> {
     let share_modal_open = create_signal(cx, false);
-    let share_paste_id = create_signal(cx, String::new());
-    let share_pastebin_url = share_paste_id.map(cx, |id| format!("https://pastebin.com/{id}"));
-    let share_playground_url = share_paste_id.map(cx, |id| {
-        format!("https://sycamore-rs.github.io/playground?paste={id}")
+    let share_gist_id = create_signal(cx, String::new());
+    let share_pastebin_url = share_gist_id.map(cx, |id| {
+        format!("https://gist.github.com/sycamore-playground/{id}")
+    });
+    let share_playground_url = share_gist_id.map(cx, |id| {
+        format!("https://sycamore-rs.github.io/playground?gist={id}")
     });
     let share = move |_| {
         spawn_local_scoped(cx, async {
-            let url = new_paste(&props.source.get())
+            let id = new_paste(&props.source.get())
                 .await
-                .expect("could not upload code snippet to pastebin");
-            log::info!("Generated pastebin at {url}");
-            let id = url
-                .split('/')
-                .last()
-                .expect("id should be last param of url");
+                .expect("could not upload code snippet to gist");
+            log::info!("Generated gist with id: {id}");
             share_modal_open.set(true);
-            share_paste_id.set(id.to_string());
+            share_gist_id.set(id.to_string());
         });
     };
 
@@ -97,10 +95,10 @@ fn NavBar<'a, G: Html>(cx: Scope<'a>, mut props: NavBarProps<'a, impl FnMut()>) 
             // Modal content.
             div(class="bg-white container mx-auto mt-5 px-5 py-3 rounded shadow-lg") {
                 h1(class="text-xl font-bold") { "Share" }
-                p { "Pastebin URL: "
+                p { "GitHub Gist: "
                     a(class="text-blue-600 underline", href=share_pastebin_url.get()) { (share_pastebin_url.get()) }
                 }
-                p { "Runnable playground URL: "
+                p { "Runnable playground: "
                     a(class="text-blue-600 underline", href=share_playground_url.get()) { (share_playground_url.get()) }
                 }
                 button(type="button", class="px-5 bg-yellow-400 font-bold text-white rounded shadow-inner", on:click=|_| share_modal_open.set(false)) { "Done" }
@@ -261,8 +259,8 @@ async fn App<G: Html>(cx: Scope<'_>) -> View<G> {
     let url_params =
         UrlSearchParams::new_with_str(&web_sys::window().unwrap().location().search().unwrap())
             .unwrap();
-    let initial_code = if let Some(paste_id) = url_params.get("paste") {
-        let url = format!("{BACKEND_URL}/paste/{}", paste_id);
+    let initial_code = if let Some(gist_id) = url_params.get("gist") {
+        let url = format!("{BACKEND_URL}/paste/{gist_id}");
         log::info!("Loading code from {url}");
         get_paste(&url)
             .await

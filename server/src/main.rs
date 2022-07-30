@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::{hash_map::DefaultHasher, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -12,6 +13,8 @@ use axum::routing::{get, post};
 use axum::{http, BoxError, Json, Router};
 use once_cell::sync::Lazy;
 use playground_common::{CompileRequest, CompileResponse, PasteRequest};
+use serde::Deserialize;
+use serde_json::json;
 use tokio::{fs, process::Command, sync::Mutex};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -51,7 +54,7 @@ async fn process_compile(CompileRequest { code }: CompileRequest<'_>) -> Result<
     fs::write("../playground/src/main.rs", code.as_bytes()).await?;
 
     let cargo_build = Command::new("cargo")
-        .env_remove("PASTEBIN_API_KEY")
+        .env_remove("GITHUB_TOKEN")
         .arg("build")
         .arg("--target")
         .arg("wasm32-unknown-unknown")
@@ -62,7 +65,7 @@ async fn process_compile(CompileRequest { code }: CompileRequest<'_>) -> Result<
     if cargo_build.status.success() {
         // Call trunk to orchestrate wasm-bindgen and js glue code generation.
         let _output = Command::new("trunk")
-            .env_remove("PASTEBIN_API_KEY")
+            .env_remove("GITHUB_TOKEN")
             .args(["build", "../playground/index.html", "--filehash", "false"])
             .output()
             .await
@@ -119,36 +122,59 @@ async fn handle_timeout_error(err: BoxError) -> (StatusCode, String) {
     }
 }
 
-async fn create_paste(code: &str) -> Result<String> {
+/// Create a GitHub gist and return the id of the new gist.
+async fn create_gist(code: &str) -> Result<String> {
+    #[derive(Deserialize)]
+    struct CreateGistRes {
+        id: String,
+    }
+
     let client = reqwest::Client::new();
-    let api_dev_key =
-        std::env::var("PASTEBIN_API_KEY").context("Could not get PASTEBIN_API_KEY")?;
+    let github_token = std::env::var("GITHUB_TOKEN").context("Could not get GITHUB_TOKEN")?;
     let res = client
-        .post("https://pastebin.com/api/api_post.php")
-        .form(&[
-            ("api_paste_code", code),
-            ("api_dev_key", &api_dev_key),
-            ("api_option", "paste"),
-            ("api_paste_name", "playground.rs"),
-            ("api_paste_format", "rust"),
-            ("api_paste_private", "1"),
-            ("api_paste_expire_date", "N"),
-        ])
+        .post("https://api.github.com/gists")
+        .basic_auth("sycamore-playground", Some(github_token))
+        .header("User-Agent", "sycamore-playground")
+        .json(&json!({
+            "files": {
+                "main.rs": { "content": code }
+            },
+            "public": true
+        }))
         .send()
-        .await?;
-    let paste_url = res.text().await?;
-    Ok(paste_url)
+        .await
+        .context("sending HTTP request")?;
+    let res_text = res.text().await?;
+    let gist_id = serde_json::from_str::<CreateGistRes>(&res_text)
+        .expect("could not parse github API response")
+        .id;
+    Ok(gist_id)
 }
 
-async fn fetch_paste(id: &str) -> Result<String> {
-    Ok(reqwest::get(&format!("https://pastebin.com/raw/{id}"))
-        .await?
-        .text()
-        .await?)
+async fn fetch_gist(id: &str) -> Result<String> {
+    #[derive(Deserialize)]
+    struct GetGistRes {
+        files: HashMap<String, File>,
+    }
+    #[derive(Deserialize)]
+    struct File {
+        content: String,
+    }
+
+    let res = reqwest::get(&format!("https://api.github.com/gists/{id}")).await?;
+    let res_text = res.text().await?;
+    let content = serde_json::from_str::<GetGistRes>(&res_text)
+        .expect("could not parse github API response")
+        .files
+        .get("main.rs")
+        .expect("missing file main.rs")
+        .content
+        .clone();
+    Ok(content)
 }
 
-async fn post_paste(Form(form): Form<PasteRequest<'_>>) -> (StatusCode, String) {
-    match create_paste(&form.code).await {
+async fn post_gist(Form(form): Form<PasteRequest<'_>>) -> (StatusCode, String) {
+    match create_gist(&form.code).await {
         Ok(paste_url) => (StatusCode::OK, paste_url),
         Err(err) => {
             eprintln!("{err:?}");
@@ -157,8 +183,8 @@ async fn post_paste(Form(form): Form<PasteRequest<'_>>) -> (StatusCode, String) 
     }
 }
 
-async fn get_paste(Path(paste_id): Path<String>) -> (StatusCode, String) {
-    match fetch_paste(&paste_id).await {
+async fn get_gist(Path(paste_id): Path<String>) -> (StatusCode, String) {
+    match fetch_gist(&paste_id).await {
         Ok(paste_url) => (StatusCode::OK, paste_url),
         Err(err) => {
             eprintln!("{err:?}");
@@ -181,8 +207,8 @@ async fn main() {
                 ),
             ),
         )
-        .route("/paste", post(post_paste))
-        .route("/paste/:paste_id", get(get_paste))
+        .route("/paste", post(post_gist))
+        .route("/paste/:paste_id", get(get_gist))
         .layer(
             CorsLayer::new()
                 .allow_headers(vec![http::header::CONTENT_TYPE])
