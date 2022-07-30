@@ -146,7 +146,7 @@ async fn create_gist(code: &str) -> Result<String> {
         .context("sending HTTP request")?;
     let res_text = res.text().await?;
     let gist_id = serde_json::from_str::<CreateGistRes>(&res_text)
-        .expect("could not parse github API response")
+        .context("could not parse github API response")?
         .id;
     Ok(gist_id)
 }
@@ -164,10 +164,10 @@ async fn fetch_gist(id: &str) -> Result<String> {
     let res = reqwest::get(&format!("https://api.github.com/gists/{id}")).await?;
     let res_text = res.text().await?;
     let content = serde_json::from_str::<GetGistRes>(&res_text)
-        .expect("could not parse github API response")
+        .context("could not parse github API response")?
         .files
         .get("main.rs")
-        .expect("missing file main.rs")
+        .context("missing file main.rs from gist")?
         .content
         .clone();
     Ok(content)
