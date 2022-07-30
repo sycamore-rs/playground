@@ -161,7 +161,12 @@ async fn fetch_gist(id: &str) -> Result<String> {
         content: String,
     }
 
-    let res = reqwest::get(&format!("https://api.github.com/gists/{id}")).await?;
+    let client = reqwest::Client::new();
+    let res = client
+        .get(&format!("https://api.github.com/gists/{id}"))
+        .header("User-Agent", "sycamore-playground")
+        .send()
+        .await?;
     let res_text = res.text().await?;
     let content = serde_json::from_str::<GetGistRes>(&res_text)
         .context("could not parse github API response")?

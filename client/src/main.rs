@@ -10,6 +10,7 @@ use pastebin::new_paste;
 use playground_common::{CompileRequest, CompileResponse};
 use sycamore::futures::spawn_local_scoped;
 use sycamore::prelude::*;
+use sycamore::suspense::Suspense;
 use wasm_bindgen::prelude::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlDocument, HtmlIFrameElement, UrlSearchParams};
@@ -261,7 +262,7 @@ async fn App<G: Html>(cx: Scope<'_>) -> View<G> {
             .unwrap();
     let initial_code = if let Some(gist_id) = url_params.get("gist") {
         let url = format!("{BACKEND_URL}/paste/{gist_id}");
-        log::info!("Loading code from {url}");
+        log::info!("Loading gist from {url}");
         get_paste(&url)
             .await
             .expect("could not fetch from pastebin")
@@ -287,5 +288,10 @@ fn main() {
     console_error_panic_hook::set_once();
     console_log::init_with_level(log::Level::Debug).unwrap();
 
-    sycamore::render(|cx| view! { cx, App {} });
+    sycamore::render(|cx| view! { cx, 
+        Suspense {
+            fallback: view!{ cx, "Loading..." },
+            App {}
+        }
+    });
 }
