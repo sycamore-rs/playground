@@ -203,16 +203,14 @@ fn Index<G: Html>(cx: Scope, initial_code: String) -> View<G> {
     });
 
     view! { cx,
-        NavBar { run, building: preview.map(cx, |p| p == &Preview::Building), source: source_ref }
+        NavBar(run=run, building=preview.map(cx, |p| p == &Preview::Building), source=source_ref)
         main(
             class="px-2 top-10 bottom-0 w-full absolute \
                 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 \
                 divide-y md:divide-y-0 md:divide-x divide-gray-400 space-y-2 md:space-x-2 \
                 overflow-hidden"
         ) {
-            EditorView {
-                source,
-            }
+            EditorView(source=source)
             div(class="block h-full w-full pb-2 overflow-auto") {
                 (match preview.get().as_ref().clone() {
                     Preview::Initial => view! { cx,
@@ -289,8 +287,7 @@ fn main() {
     console_log::init_with_level(log::Level::Debug).unwrap();
 
     sycamore::render(|cx| view! { cx, 
-        Suspense {
-            fallback: view!{ cx, "Loading..." },
+        Suspense(fallback=view!{ cx, "Loading..." }) {
             App {}
         }
     });
