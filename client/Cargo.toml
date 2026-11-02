@@ -5,5 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
+gloo-net = { version = "0.7", default-features = false, features = ["http", "json"] }
+serde_json = "1"
+wasm-bindgen-futures = "0.4"
 sycamore = "0.9.4"
 sycamore-playground-shared = { path = "../shared" }

@@ -2,3 +2,5 @@
 /compilation-env
 /artifact-cache
 /.direnv
+
+client/dist/**/*

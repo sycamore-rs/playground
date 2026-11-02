@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository is the online playground for **sycamore-rs**. It has a client component and a Rust server component. The server is hosted on **Azure Container Apps Express** as a Docker container.
+This repository is the online playground for **sycamore-rs**. The frontend is hosted on **GitHub Pages**, and the Rust server is hosted on **Azure Container Apps Express** as a Docker container. They use different origins in production.
 
 ## Repository layout
 
@@ -19,6 +19,8 @@ This repository is the online playground for **sycamore-rs**. It has a client co
 Run Rust commands from the repository root unless a command explicitly says otherwise:
 
 - `cargo check --workspace` — check workspace crates.
+- `cargo check --package sycamore-playground-client --target wasm32-unknown-unknown` — check the browser target.
+- Run the backend with `cargo run --package sycamore-playground-server`, then run `cd client && trunk serve` in another terminal. Trunk proxies `/compile` to `http://127.0.0.1:3000/compile`, avoiding cross-origin requests during development. The bare-bones client displays JSON metadata only; it does not fetch or execute WASM.
 - `cargo test --workspace` — run workspace tests.
 - `cargo build --release` — build the server in release mode.
 - `cargo run --package sycamore-playground-server -- --precompile` — compile all examples registered in `server/src/precompiled.rs` into `artifact-cache/precompiled/` and exit. Requires the WASM target. Run offline, not alongside a running server: both modes use the same compilation workspace.
@@ -26,6 +28,12 @@ Run Rust commands from the repository root unless a command explicitly says othe
 Server logs use `tracing`, writing timestamped, leveled events to stderr. The default level is `info` for the server; set `RUST_LOG=sycamore_playground_server=debug` for cache activity and successful health requests. HTTP logs contain route templates, status codes, and latency, never submitted source, query strings, or full compiler diagnostics.
 
 The runtime compilation environment needs the `wasm32-unknown-unknown` Rust target. The Docker image sets this up for the container. Docker builds and container-based sample compilation checks are not required unless explicitly requested.
+
+## Frontend backend URL configuration
+
+- The frontend reads `BACKEND_BASE_URL` at compile time using `option_env!()`. Unset or empty means same-origin requests (`/compile`), preserving the local Trunk proxy workflow. A trailing slash is allowed; the frontend appends `/compile` to the base URL.
+- Set the GitHub Actions repository variable `BACKEND_BASE_URL` to the Azure backend's HTTPS base URL (for example, `https://your-app.azurecontainerapps.io`, without `/compile`). `.github/workflows/deploy.yml` passes it into the frontend build environment. Rebuild and redeploy the frontend after changing it; it is not a runtime setting or a secret.
+- Production requests are cross-origin, so the backend must allow the GitHub Pages frontend origin through CORS, including preflight requests for JSON POSTs. Trunk's proxy applies only during local development.
 
 ## Implementation notes
 

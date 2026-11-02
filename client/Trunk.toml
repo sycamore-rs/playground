@@ -1,2 +1,6 @@
 [tools]
 tailwindcss = "4.3.3"
+
+# Keep browser API calls same-origin during local development.
+[[proxy]]
+backend = "http://127.0.0.1:3000/compile"
