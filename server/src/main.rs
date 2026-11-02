@@ -61,15 +61,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/", get(index))
         .route("/health", get(health_check))
-        .route("/compile", post(compile_handler))
+        .route("/compile", post(compile_handler).options(preflight_handler))
         .route("/artifacts/{filename}", get(artifact_handler))
         .with_state(state)
+        .layer(middleware::from_fn(cors_headers))
         .layer(middleware::from_fn(log_request));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     tracing::info!(address = %listener.local_addr()?, "HTTP server listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn cors_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+    headers.insert(
+        "Access-Control-Allow-Methods",
+        "POST, GET, OPTIONS".parse().unwrap(),
+    );
+    headers.insert(
+        "Access-Control-Allow-Headers",
+        "Content-Type".parse().unwrap(),
+    );
+    response
+}
+
+async fn preflight_handler() -> StatusCode {
+    StatusCode::NO_CONTENT
 }
 
 async fn log_request(request: Request, next: Next) -> Response {
@@ -172,6 +192,7 @@ impl AppState {
             .insert(
                 key,
                 &artifact.wasm,
+                &artifact.javascript,
                 response.clone(),
                 request.code == DEFAULT_CODE,
             )
@@ -267,6 +288,67 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn serves_matching_wasm_and_javascript_artifacts() {
+        let root = tempfile::tempdir().unwrap();
+        let compiler = Compiler::initialize(root.path().join("compilation-env"))
+            .await
+            .unwrap();
+        let mut cache = ArtifactCache::new(
+            &root.path().join("cache"),
+            4096,
+            4,
+            Duration::from_secs(300),
+        )
+        .await
+        .unwrap();
+        let request = CompileRequest {
+            code: "test".into(),
+        };
+        let key = cache.key(&request);
+        let metadata = CompileResponse {
+            artifact_url: Some(format!("/artifacts/{key}.wasm")),
+            compilation_time_ms: 1,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            cache_hit: false,
+        };
+        cache
+            .insert(
+                key.clone(),
+                b"wasm",
+                b"export default init;",
+                metadata,
+                false,
+            )
+            .await
+            .unwrap();
+        let state = AppState {
+            build_lock: Arc::new(Mutex::new(())),
+            compiler: Arc::new(compiler),
+            cache: Arc::new(Mutex::new(cache)),
+            compile_slots: Arc::new(Semaphore::new(8)),
+        };
+        for (extension, content_type, body) in [
+            ("wasm", "application/wasm", b"wasm".as_slice()),
+            ("js", "text/javascript", b"export default init;".as_slice()),
+        ] {
+            let response =
+                artifact_handler(State(state.clone()), Path(format!("{key}.{extension}"))).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()["content-type"], content_type);
+            assert_eq!(
+                axum::body::to_bytes(response.into_body(), 4096)
+                    .await
+                    .unwrap()
+                    .as_ref(),
+                body,
+            );
+        }
+        let response = artifact_handler(State(state), Path("missing.js".into())).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn compile_failures_return_json_with_no_artifact() {
         for status in [
             StatusCode::BAD_REQUEST,
@@ -296,18 +378,33 @@ mod tests {
 }
 
 async fn artifact_handler(State(state): State<AppState>, Path(filename): Path<String>) -> Response {
-    let Some(key) = filename.strip_suffix(".wasm") else {
+    let (key, javascript) = if let Some(key) = filename.strip_suffix(".wasm") {
+        (key, false)
+    } else if let Some(key) = filename.strip_suffix(".js") {
+        (key, true)
+    } else {
         return (StatusCode::NOT_FOUND, [("Cache-Control", "no-store")]).into_response();
     };
     // The cache reads under its lock so eviction cannot remove a file mid-read.
-    let result = state.cache.lock().await.download(key).await;
+    let result = if javascript {
+        state.cache.lock().await.download_javascript(key).await
+    } else {
+        state.cache.lock().await.download(key).await
+    };
     match result {
-        Ok(Some(wasm)) => (
+        Ok(Some(artifact)) => (
             [
-                ("Content-Type", "application/wasm"),
+                (
+                    "Content-Type",
+                    if javascript {
+                        "text/javascript"
+                    } else {
+                        "application/wasm"
+                    },
+                ),
                 ("Cache-Control", "private, max-age=300"),
             ],
-            wasm,
+            artifact,
         )
             .into_response(),
         Ok(None) => (

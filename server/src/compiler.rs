@@ -19,6 +19,7 @@ pub(crate) struct CompilationMetadata {
 
 pub(crate) struct CompiledArtifact {
     pub wasm: Vec<u8>,
+    pub javascript: Vec<u8>,
     pub metadata: CompilationMetadata,
 }
 
@@ -121,15 +122,21 @@ impl Compiler {
         )
         .await
         .map_err(CompileError::io)?;
+        let javascript =
+            tokio::fs::read(self.work_dir.join("target/bindgen/sycamore-playground.js"))
+                .await
+                .map_err(CompileError::io)?;
         let compilation_time_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
         tracing::info!(
             compilation_time_ms,
             warning_count = warnings.len(),
             wasm_bytes = wasm.len(),
+            javascript_bytes = javascript.len(),
             "Compilation succeeded"
         );
         Ok(CompiledArtifact {
             wasm,
+            javascript,
             metadata: CompilationMetadata {
                 compilation_time_ms,
                 warnings,

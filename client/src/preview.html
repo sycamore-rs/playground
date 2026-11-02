@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 16px; font-family: system-ui, sans-serif; }
+    #playground-status { color: #475569; }
+    #playground-error { color: #b91c1c; white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <p id="playground-status" role="status">Loading compiled program…</p>
+  <pre id="playground-error" role="alert" hidden></pre>
+  <script type="module">
+    // This document runs with an opaque origin: never add allow-same-origin
+    // to the iframe sandbox. Submitted programs must not access the editor.
+    const status = document.getElementById('playground-status');
+    const errorOutput = document.getElementById('playground-error');
+    function showError(error) {
+      status.hidden = true;
+      errorOutput.hidden = false;
+      errorOutput.textContent = `Program failed: ${error?.stack ?? error?.message ?? String(error)}`;
+    }
+    window.addEventListener('error', event => showError(event.error ?? event.message));
+    window.addEventListener('unhandledrejection', event => showError(event.reason));
+    try {
+      // Resolve relative artifact paths against the backend, not GitHub Pages.
+      // srcdoc inherits the embedding page's base URL even in an opaque sandbox.
+      const backend = new URL(__COMPILE_URL__, document.baseURI);
+      const wasmUrl = new URL(__ARTIFACT_URL__, backend);
+      if (!['http:', 'https:'].includes(wasmUrl.protocol) || !wasmUrl.pathname.endsWith('.wasm')) {
+        throw new Error('The server returned an unsupported artifact URL');
+      }
+      const moduleUrl = new URL(wasmUrl);
+      moduleUrl.pathname = moduleUrl.pathname.slice(0, -5) + '.js';
+      const { default: init } = await import(moduleUrl.href);
+      const response = await fetch(wasmUrl.href, { credentials: 'omit' });
+      if (!response.ok) {
+        throw new Error(response.status === 404
+          ? 'The compiled artifact expired. Click Run to compile it again.'
+          : `Could not load WebAssembly (HTTP ${response.status})`);
+      }
+      // Supplying bytes also works when a proxy omits application/wasm.
+      // wasm-bindgen's initializer invokes the Rust program's start function.
+      await init({ module_or_path: await response.arrayBuffer() });
+      status.remove();
+    } catch (error) {
+      showError(error);
+    }
+  </script>
+</body>
+</html>

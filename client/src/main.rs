@@ -11,7 +11,8 @@ fn main() {
 fn App() -> View {
     let code = create_signal(DEFAULT_CODE.to_owned());
     let running = create_signal(false);
-    let output = create_signal("Click Run to compile the code and view its metadata.".to_owned());
+    let output = create_signal("Click Run to compile and run the code.".to_owned());
+    let preview = create_signal(None::<String>);
 
     let run = move |_| {
         if running.get() {
@@ -19,13 +20,25 @@ fn App() -> View {
         }
         let submitted_code = code.get_clone();
         running.set(true);
+        // Remove the previous browsing context, including its timers and listeners.
+        preview.set(None);
         output.set("Compiling…".to_owned());
         spawn_local(async move {
             let result = compile(submitted_code).await;
-            output.set(match result {
-                Ok(metadata) => metadata,
-                Err(error) => format!("Error: {error}"),
-            });
+            match result {
+                Ok(metadata) => {
+                    if metadata.errors.is_empty() {
+                        if let Some(artifact_url) = metadata.artifact_url.as_deref() {
+                            preview.set(Some(preview_document(artifact_url)));
+                        }
+                    }
+                    output.set(
+                        serde_json::to_string_pretty(&metadata)
+                            .unwrap_or_else(|error| format!("Could not display metadata: {error}")),
+                    );
+                }
+                Err(error) => output.set(format!("Error: {error}")),
+            }
             running.set(false);
         });
     };
@@ -36,7 +49,7 @@ fn App() -> View {
                 header {
                     h1(class="text-2xl font-semibold") { "Sycamore Playground" }
                     p(class="mt-2 text-sm text-slate-600") {
-                        "Compile Rust code and inspect the response metadata. WASM is not downloaded or executed yet."
+                        "Compile Rust code and run it in an isolated output frame."
                     }
                 }
                 div(class="space-y-2") {
@@ -56,6 +69,21 @@ fn App() -> View {
                 ) {
                     (if running.get() { "Running…" } else { "Run" })
                 }
+                (match preview.get_clone() {
+                    Some(document) => view! {
+                        section(class="space-y-2") {
+                            h2(class="text-lg font-medium") { "Output" }
+                            iframe(
+                                title="Playground output",
+                                "sandbox"="allow-scripts",
+                                referrerpolicy="no-referrer",
+                                srcdoc=document,
+                                class="min-h-80 w-full rounded border border-slate-300 bg-white",
+                            )
+                        }
+                    },
+                    None => View::default(),
+                })
                 section(class="space-y-2") {
                     h2(class="text-lg font-medium") { "Output metadata" }
                     pre(
@@ -74,7 +102,7 @@ fn compile_url(base_url: &str) -> String {
     format!("{}/compile", base_url.trim_end_matches('/'))
 }
 
-async fn compile(code: String) -> Result<String, String> {
+async fn compile(code: String) -> Result<CompileResponse, String> {
     // Embedded at build time; absent or empty keeps local requests same-origin.
     let url = compile_url(option_env!("BACKEND_BASE_URL").unwrap_or(""));
     let request = Request::post(&url)
@@ -98,13 +126,57 @@ async fn compile(code: String) -> Result<String, String> {
             format!("HTTP {status}\n{body}")
         }
     })?;
-    serde_json::to_string_pretty(&metadata)
-        .map_err(|error| format!("Could not display compilation metadata: {error}"))
+    if !response.ok() {
+        return Err(format!(
+            "HTTP {status}\n{}",
+            serde_json::to_string_pretty(&metadata).unwrap_or(body)
+        ));
+    }
+    Ok(metadata)
+}
+
+/// Encode data for an inline script without allowing HTML parser breakouts.
+fn script_string(value: &str) -> String {
+    serde_json::to_string(value)
+        .expect("strings can be serialized")
+        .replace('&', "\\u0026")
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
+}
+
+fn preview_document(artifact_url: &str) -> String {
+    let backend = compile_url(option_env!("BACKEND_BASE_URL").unwrap_or(""));
+    include_str!("preview.html")
+        .replace("__COMPILE_URL__", &script_string(&backend))
+        .replace("__ARTIFACT_URL__", &script_string(artifact_url))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::compile_url;
+    use super::{compile_url, preview_document, script_string};
+
+    #[test]
+    fn preview_includes_artifact_and_initializes_wasm() {
+        let document = preview_document("/artifacts/test.wasm");
+        assert!(document.contains("new URL(\"/artifacts/test.wasm\", backend)"));
+        assert!(document.contains("await import(moduleUrl.href)"));
+        assert!(document.contains("await init({ module_or_path:"));
+        assert!(!document.contains("__COMPILE_URL__"));
+        assert!(!document.contains("__ARTIFACT_URL__"));
+    }
+
+    #[test]
+    fn artifact_url_cannot_break_out_of_inline_script() {
+        let url = "</script><script>alert('injection')</script>\u{2028}&";
+        let encoded = script_string(url);
+        assert!(!encoded.contains('<'));
+        assert!(!encoded.contains('&'));
+        assert!(!encoded.contains('\u{2028}'));
+        assert_eq!(serde_json::from_str::<String>(&encoded).unwrap(), url);
+        assert_eq!(preview_document(url).matches("</script>").count(), 1);
+    }
 
     #[test]
     fn compile_url_defaults_to_same_origin() {

@@ -14,6 +14,7 @@ use tempfile::{Builder, TempDir};
 struct Entry {
     metadata: CompileResponse,
     wasm_path: PathBuf,
+    javascript_path: PathBuf,
     size_bytes: u64,
     last_used: Instant,
     protected_until: Instant,
@@ -120,6 +121,7 @@ impl ArtifactCache {
         &mut self,
         key: String,
         wasm: &[u8],
+        javascript: &[u8],
         mut metadata: CompileResponse,
         pinned: bool,
     ) -> Result<(), CacheError> {
@@ -141,7 +143,8 @@ impl ArtifactCache {
         let metadata_bytes = to_vec(&metadata)
             .map_err(|error| CacheError::Io(io::Error::new(io::ErrorKind::InvalidData, error)))?;
         let entry_size = (wasm.len() as u64)
-            .checked_add(metadata_bytes.len() as u64)
+            .checked_add(javascript.len() as u64)
+            .and_then(|size| size.checked_add(metadata_bytes.len() as u64))
             .ok_or(CacheError::Capacity)?;
         if entry_size > self.max_bytes || self.max_entries == 0 {
             return Err(CacheError::Capacity);
@@ -158,6 +161,7 @@ impl ArtifactCache {
         tokio::fs::create_dir(&stage_dir).await?;
         let stage_result = async {
             tokio::fs::write(stage_dir.join("artifact.wasm"), wasm).await?;
+            tokio::fs::write(stage_dir.join("artifact.js"), javascript).await?;
             // Keep a diagnostic record beside the WASM. Runtime lookups use the
             // in-memory copy; startup deliberately discards the old namespace.
             tokio::fs::write(stage_dir.join("metadata.json"), &metadata_bytes).await?;
@@ -185,6 +189,7 @@ impl ArtifactCache {
             Entry {
                 metadata,
                 wasm_path: final_dir.join("artifact.wasm"),
+                javascript_path: final_dir.join("artifact.js"),
                 size_bytes: entry_size,
                 last_used: now,
                 protected_until: Instant::now() + self.grace,
@@ -209,6 +214,7 @@ impl ArtifactCache {
             )));
         }
 
+        let javascript_path = wasm_path.with_file_name("artifact.js");
         let file = tokio::fs::metadata(&wasm_path).await?;
         if !file.is_file() {
             return Err(CacheError::Io(io::Error::new(
@@ -217,10 +223,19 @@ impl ArtifactCache {
             )));
         }
         let wasm_size = file.len();
+        let javascript_file = tokio::fs::metadata(&javascript_path).await?;
+        if !javascript_file.is_file() {
+            return Err(CacheError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "precompiled JavaScript path is not a file",
+            )));
+        }
+        let javascript_size = javascript_file.len();
         let metadata_bytes = to_vec(&metadata)
             .map_err(|error| CacheError::Io(io::Error::new(io::ErrorKind::InvalidData, error)))?;
         let entry_size = wasm_size
-            .checked_add(metadata_bytes.len() as u64)
+            .checked_add(javascript_size)
+            .and_then(|size| size.checked_add(metadata_bytes.len() as u64))
             .ok_or(CacheError::Capacity)?;
         let victims = self.plan_evictions(&key, entry_size)?;
         self.evict_entries(victims).await?;
@@ -238,6 +253,7 @@ impl ArtifactCache {
             Entry {
                 metadata: response,
                 wasm_path,
+                javascript_path,
                 size_bytes: entry_size,
                 last_used: now,
                 protected_until: now + self.grace,
@@ -247,14 +263,26 @@ impl ArtifactCache {
         Ok(())
     }
 
-    /// Reads an artifact while the caller's cache lock remains held, updating its LRU time.
+    /// Reads the WASM artifact while the caller's cache lock remains held, updating its LRU time.
     pub async fn download(&mut self, key: &str) -> io::Result<Option<Vec<u8>>> {
-        if !self.entries.contains_key(key) {
-            return Ok(None);
-        }
+        self.download_file(key, false).await
+    }
 
-        let wasm_path = self.entries[key].wasm_path.clone();
-        let result = tokio::fs::read(wasm_path).await;
+    /// Reads the generated JavaScript glue while the caller's cache lock remains held.
+    pub async fn download_javascript(&mut self, key: &str) -> io::Result<Option<Vec<u8>>> {
+        self.download_file(key, true).await
+    }
+
+    async fn download_file(&mut self, key: &str, javascript: bool) -> io::Result<Option<Vec<u8>>> {
+        let Some(entry) = self.entries.get(key) else {
+            return Ok(None);
+        };
+        let artifact_path = if javascript {
+            entry.javascript_path.clone()
+        } else {
+            entry.wasm_path.clone()
+        };
+        let result = tokio::fs::read(artifact_path).await;
         match result {
             Ok(bytes) => {
                 if let Some(entry) = self.entries.get_mut(key) {
@@ -383,11 +411,13 @@ mod tests {
         let a = cache.key(&request("a"));
         let b = cache.key(&request("b"));
         cache
-            .insert(a.clone(), b"wasm", metadata(&a), false)
+            .insert(a.clone(), b"wasm", b"js", metadata(&a), false)
             .await
             .unwrap();
         assert!(matches!(
-            cache.insert(b.clone(), b"other", metadata(&b), false).await,
+            cache
+                .insert(b.clone(), b"other", b"js", metadata(&b), false)
+                .await,
             Err(CacheError::Capacity)
         ));
         cache.entries.get_mut(&a).unwrap().protected_until = Instant::now();
@@ -396,12 +426,14 @@ mod tests {
         assert_eq!(response.compilation_time_ms, 42);
         assert!(cache.entries[&a].protected_until > Instant::now());
         assert!(matches!(
-            cache.insert(b.clone(), b"other", metadata(&b), false).await,
+            cache
+                .insert(b.clone(), b"other", b"js", metadata(&b), false)
+                .await,
             Err(CacheError::Capacity)
         ));
         cache.entries.get_mut(&a).unwrap().protected_until = Instant::now();
         cache
-            .insert(b.clone(), b"other", metadata(&b), false)
+            .insert(b.clone(), b"other", b"js", metadata(&b), false)
             .await
             .unwrap();
         assert!(cache.lookup(&a).await.is_none());
@@ -420,7 +452,7 @@ mod tests {
         let c = cache.key(&request("c"));
         for (key, pinned) in [(&pinned, true), (&a, false), (&b, false)] {
             cache
-                .insert(key.clone(), b"wasm", metadata(key), pinned)
+                .insert(key.clone(), b"wasm", b"js", metadata(key), pinned)
                 .await
                 .unwrap();
         }
@@ -428,7 +460,7 @@ mod tests {
         cache.entries.get_mut(&a).unwrap().last_used = Instant::now() - Duration::from_secs(10);
         cache.download(&b).await.unwrap();
         cache
-            .insert(c.clone(), b"wasm", metadata(&c), false)
+            .insert(c.clone(), b"wasm", b"js", metadata(&c), false)
             .await
             .unwrap();
         assert!(cache.lookup(&a).await.is_none());
@@ -444,6 +476,10 @@ mod tests {
         let bundled = tempfile::tempdir().unwrap();
         let wasm_path = bundled.path().join("artifact.wasm");
         tokio::fs::write(&wasm_path, b"bundled wasm").await.unwrap();
+        let javascript_path = bundled.path().join("artifact.js");
+        tokio::fs::write(&javascript_path, b"bundled js")
+            .await
+            .unwrap();
         let compile_request = request("precompiled");
         let compilation_metadata = CompilationMetadata {
             compilation_time_ms: 17,
@@ -459,7 +495,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cache.entries[&key].wasm_path, wasm_path);
+        assert_eq!(cache.entries[&key].javascript_path, javascript_path);
         assert!(!cache.entry_dir(&key).join("artifact.wasm").exists());
+        assert!(!cache.entry_dir(&key).join("artifact.js").exists());
         let response = cache.lookup(&key).await.unwrap();
         assert_eq!(
             response.artifact_url,
@@ -471,6 +509,10 @@ mod tests {
             cache.download(&key).await.unwrap(),
             Some(b"bundled wasm".to_vec())
         );
+        assert_eq!(
+            cache.download_javascript(&key).await.unwrap(),
+            Some(b"bundled js".to_vec())
+        );
 
         let runtime_request = request("runtime");
         let runtime_key = cache.key(&runtime_request);
@@ -478,6 +520,7 @@ mod tests {
             .insert(
                 runtime_key.clone(),
                 b"runtime wasm",
+                b"runtime js",
                 metadata(&runtime_key),
                 false,
             )
@@ -488,7 +531,13 @@ mod tests {
         let next_request = request("next");
         let next_key = cache.key(&next_request);
         cache
-            .insert(next_key.clone(), b"next wasm", metadata(&next_key), false)
+            .insert(
+                next_key.clone(),
+                b"next wasm",
+                b"next js",
+                metadata(&next_key),
+                false,
+            )
             .await
             .unwrap();
         assert!(cache.entries.contains_key(&key));
@@ -498,17 +547,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn precompiled_entries_count_wasm_and_compilation_metadata_toward_capacity() {
+    async fn precompiled_entries_require_a_javascript_sibling() {
         let root = tempfile::tempdir().unwrap();
         let bundled = tempfile::tempdir().unwrap();
         let wasm_path = bundled.path().join("artifact.wasm");
         tokio::fs::write(&wasm_path, b"wasm").await.unwrap();
+        let mut cache = ArtifactCache::new(root.path(), 4096, 4, Duration::ZERO)
+            .await
+            .unwrap();
+        let error = cache
+            .register_precompiled(
+                &request("precompiled"),
+                wasm_path,
+                CompilationMetadata {
+                    compilation_time_ms: 17,
+                    warnings: Vec::new(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, CacheError::Io(ref error) if error.kind() == io::ErrorKind::NotFound)
+        );
+        assert!(cache.entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn precompiled_entries_count_wasm_javascript_and_metadata_toward_capacity() {
+        let root = tempfile::tempdir().unwrap();
+        let bundled = tempfile::tempdir().unwrap();
+        let wasm_path = bundled.path().join("artifact.wasm");
+        tokio::fs::write(&wasm_path, b"wasm").await.unwrap();
+        tokio::fs::write(bundled.path().join("artifact.js"), b"js")
+            .await
+            .unwrap();
         let metadata = CompilationMetadata {
             compilation_time_ms: 17,
             warnings: Vec::new(),
         };
         let metadata_size = to_vec(&metadata).unwrap().len() as u64;
-        let budget = b"wasm".len() as u64 + metadata_size - 1;
+        let budget = b"wasm".len() as u64 + b"js".len() as u64 + metadata_size - 1;
         let mut cache = ArtifactCache::new(root.path(), budget, 4, Duration::ZERO)
             .await
             .unwrap();
@@ -530,20 +608,20 @@ mod tests {
         let a = cache.key(&request("a"));
         let b = cache.key(&request("b"));
         cache
-            .insert(a.clone(), b"wasm", metadata(&a), false)
+            .insert(a.clone(), b"wasm", b"js", metadata(&a), false)
             .await
             .unwrap();
         assert!(matches!(
             cache
-                .insert(b.clone(), &[0; 300], metadata(&b), false)
+                .insert(b.clone(), &[0; 300], b"js", metadata(&b), false)
                 .await,
             Err(CacheError::Capacity)
         ));
         assert!(cache.lookup(&a).await.is_some());
-        // Although both WASM bodies fit, both metadata files plus bodies do not.
+        // The artifacts fit, but the metadata files plus artifact bodies do not.
         cache.entries.get_mut(&a).unwrap().protected_until = Instant::now();
         cache
-            .insert(b.clone(), b"wasm", metadata(&b), false)
+            .insert(b.clone(), b"wasm", b"js", metadata(&b), false)
             .await
             .unwrap();
         assert!(cache.lookup(&a).await.is_none());

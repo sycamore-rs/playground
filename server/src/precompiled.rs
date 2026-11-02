@@ -41,6 +41,7 @@ pub(crate) async fn build(
         )
         .await?;
         tokio::fs::write(directory.join("artifact.wasm"), artifact.wasm).await?;
+        tokio::fs::write(directory.join("artifact.js"), artifact.javascript).await?;
     }
 
     let destination = cache_root.join("precompiled");
@@ -58,10 +59,11 @@ pub(crate) async fn build(
     Ok(())
 }
 
-/// Load metadata only; the cache references the immutable bundled WASM in place.
+/// Load metadata only; the cache references the immutable bundled artifacts in place.
 /// A missing bundle is allowed for local development, with lazy compilation on
 /// the first request. Incomplete or stale bundles fail startup rather than serve
-/// an artifact that does not match the binary's registered request.
+/// an artifact that does not match the binary's registered request. Older bundles without
+/// `artifact.js` must be rebuilt with `--precompile`.
 pub(crate) async fn register(cache_root: &Path, cache: &mut ArtifactCache) -> io::Result<()> {
     let root = cache_root.join("precompiled");
     match tokio::fs::metadata(&root).await {
