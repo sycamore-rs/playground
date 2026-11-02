@@ -25,11 +25,10 @@ WORKDIR /app
 
 RUN rustup target add wasm32-unknown-unknown
 
-RUN mkdir -p /app/compilation-env/ && mkdir -p /app/compilation-env/src/
-COPY --from=builder /app/server/Cargo.toml.template /app/compilation-env/Cargo.toml
-RUN echo "fn main() {}" > /app/compilation-env/src/main.rs && \
-	cd /app/compilation-env/ && cargo build --target wasm32-unknown-unknown
-
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/sycamore-playground-server /app/sycamore-playground-server
+
+# Build bundled examples and warm the compilation dependencies once per image,
+# not on each service startup. The binary creates the compilation workspace.
+RUN ./sycamore-playground-server --precompile
 EXPOSE 3000
 CMD ["./sycamore-playground-server"]

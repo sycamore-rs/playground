@@ -1,3 +1,4 @@
 /target
 /compilation-env
+/artifact-cache
 /.direnv
