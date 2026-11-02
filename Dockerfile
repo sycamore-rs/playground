@@ -13,8 +13,9 @@ RUN rustup target add x86_64-unknown-linux-musl
 # Copy manifest files first to leverage Docker cache
 COPY Cargo.toml Cargo.lock /app/
 COPY server/ /app/server/
+COPY client/ /app/client/
 
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --locked --release --package sycamore-playground-server --target x86_64-unknown-linux-musl
 
 # === Stage 2: Final Image ===
 FROM rust:1.99-alpine

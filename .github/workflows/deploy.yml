@@ -1,0 +1,126 @@
+name: Build and deploy playground
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Do not interrupt a deployment halfway through or deploy two commits concurrently.
+concurrency:
+  group: playground-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk@0.21.14
+
+      - name: Build frontend
+        working-directory: client
+        env:
+          # Override with / for a custom domain or user/organization Pages site.
+          PUBLIC_URL: ${{ vars.PAGES_PUBLIC_URL || '/playground/' }}
+        run: trunk build --release --locked --public-url "$PUBLIC_URL"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
+
+  backend:
+    name: Build and publish backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/sycamore-rs/playground:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Export immutable image reference
+        id: image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "image=ghcr.io/sycamore-rs/playground@$DIGEST" >> "$GITHUB_OUTPUT"
+
+  deploy-backend:
+    name: Deploy backend to Azure
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Log in to Azure using OpenID Connect
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy the published image
+        env:
+          IMAGE: ${{ needs.backend.outputs.image }}
+        run: |
+          az extension add --name containerapp --upgrade --allow-preview true
+          az containerapp update \
+            --name sycamore-playground \
+            --resource-group sycamore-playground \
+            --image "$IMAGE" \
+            --output none
+
+  deploy-frontend:
+    name: Deploy frontend to GitHub Pages
+    # Both builds must succeed, and Azure must accept the backend deployment first.
+    needs: [frontend, backend, deploy-backend]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the frontend artifact from this workflow run
+        id: deployment
+        uses: actions/deploy-pages@v4

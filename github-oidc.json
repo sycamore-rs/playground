@@ -1,0 +1,9 @@
+{
+	"name": "github-playground-main",
+	"issuer": "https://token.actions.githubusercontent.com",
+	"subject": "repo:sycamore-rs/playground:ref:refs/heads/main",
+	"description": "Deploy Sycamore Playground from GitHub Actions on main",
+	"audiences": [
+		"api://AzureADTokenExchange"
+	]
+}
