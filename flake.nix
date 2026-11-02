@@ -13,7 +13,11 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.azure-cli ];
+        # Keep the CLI version aligned with server/Cargo.toml.template and Dockerfile.
+        packages = [
+          pkgs.azure-cli
+          pkgs.wasm-bindgen-cli_0_2_126
+        ];
       };
     };
 }

@@ -82,13 +82,46 @@ impl Compiler {
                 started.elapsed().as_millis().min(u64::MAX as u128) as u64;
             return Err(error);
         }
-        let compilation_time_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let mut command = tokio::process::Command::new("wasm-bindgen");
+        command.args([
+            "target/wasm32-unknown-unknown/debug/sycamore-playground.wasm",
+            "--target",
+            "web",
+            "--out-dir",
+            "target/bindgen",
+            "--out-name",
+            "sycamore-playground",
+        ]);
+        let output = self
+            .run_command(command, limit.saturating_sub(started.elapsed()))
+            .await
+            .map_err(|mut error| {
+                error.response.warnings = warnings.clone();
+                error.response.compilation_time_ms =
+                    started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+                error
+            })?;
+        if !output.status.success() {
+            tracing::error!(exit_status = %output.status, "wasm-bindgen failed");
+            let mut error = CompileError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(
+                    "wasm-bindgen failed:\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            );
+            error.response.warnings = warnings;
+            error.response.compilation_time_ms =
+                started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+            return Err(error);
+        }
         let wasm = tokio::fs::read(
             self.work_dir
-                .join("target/wasm32-unknown-unknown/debug/sycamore-playground.wasm"),
+                .join("target/bindgen/sycamore-playground_bg.wasm"),
         )
         .await
         .map_err(CompileError::io)?;
+        let compilation_time_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
         tracing::info!(
             compilation_time_ms,
             warning_count = warnings.len(),
@@ -106,17 +139,27 @@ impl Compiler {
 
     async fn run_cargo(&self, limit: Duration) -> Result<Output, CompileError> {
         let mut command = tokio::process::Command::new("cargo");
-        // Kill rustc/linker descendants too before reusing the shared workspace.
-        #[cfg(unix)]
-        command.process_group(0);
-        let mut child = command
+        command
             .args([
                 "build",
+                "--offline",
                 "--target",
                 "wasm32-unknown-unknown",
                 "--message-format=json",
             ])
-            .env("CARGO_BUILD_JOBS", "1")
+            .env("CARGO_BUILD_JOBS", "1");
+        self.run_command(command, limit).await
+    }
+
+    async fn run_command(
+        &self,
+        mut command: tokio::process::Command,
+        limit: Duration,
+    ) -> Result<Output, CompileError> {
+        // Kill tool descendants too before reusing the shared workspace.
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = command
             .current_dir(&self.work_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -136,7 +179,7 @@ impl Compiler {
         });
         #[cfg(unix)]
         let process_group = child.id().unwrap();
-        // Bound pipe draining as well as cargo itself.
+        // Bound pipe draining as well as the command itself.
         let result = timeout(limit, async {
             let status = child.wait().await?;
             let (stdout, stderr) = tokio::join!(&mut stdout_task, &mut stderr_task);
@@ -238,6 +281,40 @@ impl std::error::Error for CompileError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn command_runner_captures_output_and_failure_status() {
+        let directory = tempfile::tempdir().unwrap();
+        let compiler = Compiler::initialize(directory.path().to_path_buf())
+            .await
+            .unwrap();
+        let mut command = tokio::process::Command::new("sh");
+        command.args(["-c", "printf output; printf diagnostic >&2; exit 7"]);
+        let output = compiler
+            .run_command(command, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(output.stdout, b"output");
+        assert_eq!(output.stderr, b"diagnostic");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn command_runner_enforces_timeout() {
+        let directory = tempfile::tempdir().unwrap();
+        let compiler = Compiler::initialize(directory.path().to_path_buf())
+            .await
+            .unwrap();
+        let mut command = tokio::process::Command::new("sh");
+        command.args(["-c", "sleep 60"]);
+        let error = compiler
+            .run_command(command, Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert_eq!(error.status, StatusCode::REQUEST_TIMEOUT);
+    }
 
     #[test]
     fn parses_structured_errors_and_warnings() {
