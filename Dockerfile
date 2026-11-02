@@ -32,11 +32,12 @@ RUN rustup target add wasm32-unknown-unknown
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/sycamore-playground-server /app/sycamore-playground-server
 COPY --from=builder /usr/local/cargo/bin/wasm-bindgen /usr/local/bin/wasm-bindgen
 
-# Runtime builds are offline. Fetch dependencies before building bundled examples.
+# Runtime builds are offline. Fetch the full dependency graph: even a WASM
+# build may need manifests for target-inactive crates during Cargo resolution.
 COPY server/Cargo.toml.template /app/compilation-env/Cargo.toml
 RUN mkdir -p compilation-env/src \
     && printf 'fn main() {}\n' > compilation-env/src/main.rs \
-    && cargo fetch --manifest-path compilation-env/Cargo.toml --target wasm32-unknown-unknown
+    && cargo fetch --manifest-path compilation-env/Cargo.toml
 
 # Build bundled examples and warm the compilation dependencies once per image,
 # not on each service startup. The binary creates the compilation workspace.
