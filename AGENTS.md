@@ -7,7 +7,8 @@ This repository is the online playground for **sycamore-rs**. It has a client co
 ## Repository layout
 
 - `client/` — client-side playground code.
-- `server/` — Rust/Axum service. 
+- `server/` — Rust/Axum service.
+- `shared/` — library crate (`sycamore-playground-shared`) containing API types used by both the client and server, including `CompileRequest`.
 - `compilation-env/` — Rust project and build workspace used for compiling submitted playground code to WebAssembly. It is excluded from the root Cargo workspace and not checked into git.
 - `Dockerfile` — multi-stage image build for the server and its WebAssembly compilation environment.
 
@@ -19,12 +20,13 @@ Run Rust commands from the repository root unless a command explicitly says othe
 - `cargo test --workspace` — run workspace tests.
 - `cargo build --release` — build the server in release mode.
 
-The runtime compilation environment needs the `wasm32-unknown-unknown` Rust target. The Docker image sets this up for the container. When changing the container build or compilation environment, verify that the image still builds and that the server can compile a sample program.
+The runtime compilation environment needs the `wasm32-unknown-unknown` Rust target. The Docker image sets this up for the container. Docker builds and container-based sample compilation checks are not required unless explicitly requested.
 
 ## Implementation notes
 
 - Keep server changes in `server/`; its manifest is `server/Cargo.toml`.
+- Define types shared by the frontend and backend in `shared/src/lib.rs`, rather than duplicating them. API request types should support both Serde serialization and deserialization, with public fields where needed by consumers.
 - The compile endpoint accepts JSON containing a `code` string and returns a WebAssembly artifact on success. Preserve its response behavior and health endpoint when modifying routes.
 - Compilation uses the shared `compilation-env/` workspace and is serialized by a lock. Consider concurrency and cleanup implications when changing this flow.
-- Keep the Docker build aligned with the Rust toolchain, server dependencies, and targets needed both to run the service and compile WebAssembly.
+- Keep the Docker build aligned with the Rust toolchain, server dependencies, and targets needed both to run the service and compile WebAssembly. The builder stage must copy `shared/` along with the client and server workspace crates.
 - Do not commit generated build output such as `target/` directories or environment-specific secrets.

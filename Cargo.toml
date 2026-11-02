@@ -1,4 +1,4 @@
 [workspace]
 resolver = "3"
-members = ["client", "server/"]
+members = ["client", "server", "shared"]
 exclude = ["compilation-env/"]

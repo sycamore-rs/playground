@@ -6,5 +6,5 @@ publish = false
 
 [dependencies]
 axum = "0.8.9"
-serde = { version = "1.0.229", features = ["derive"] }
+sycamore-playground-shared = { path = "../shared" }
 tokio = { version = "1.54.1", features = ["full"] }

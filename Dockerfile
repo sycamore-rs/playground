@@ -14,6 +14,7 @@ RUN rustup target add x86_64-unknown-linux-musl
 COPY Cargo.toml Cargo.lock /app/
 COPY server/ /app/server/
 COPY client/ /app/client/
+COPY shared/ /app/shared/
 
 RUN cargo build --locked --release --package sycamore-playground-server --target x86_64-unknown-linux-musl
 

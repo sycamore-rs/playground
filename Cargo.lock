@@ -549,6 +549,7 @@ name = "sycamore-playground-client"
 version = "0.1.0"
 dependencies = [
  "sycamore",
+ "sycamore-playground-shared",
 ]
 
 [[package]]
@@ -556,8 +557,15 @@ name = "sycamore-playground-server"
 version = "0.1.0"
 dependencies = [
  "axum",
- "serde",
+ "sycamore-playground-shared",
  "tokio",
+]
+
+[[package]]
+name = "sycamore-playground-shared"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use serde::Deserialize;
+use sycamore_playground_shared::CompileRequest;
 use tokio::{sync::Mutex, time::timeout};
 
 #[tokio::main]
@@ -67,11 +67,6 @@ impl AppState {
             work_dir,
         }
     }
-}
-
-#[derive(Deserialize)]
-struct CompileRequest {
-    code: String,
 }
 
 async fn compile_handler(
