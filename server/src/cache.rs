@@ -226,9 +226,10 @@ impl ArtifactCache {
         self.evict_entries(victims).await?;
 
         let response = CompileResponse {
-            artifact_url: format!("/artifacts/{key}.wasm"),
+            artifact_url: Some(format!("/artifacts/{key}.wasm")),
             compilation_time_ms: metadata.compilation_time_ms,
             warnings: metadata.warnings,
+            errors: Vec::new(),
             cache_hit: true,
         };
         let now = Instant::now();
@@ -350,9 +351,10 @@ mod tests {
 
     fn metadata(key: &str) -> CompileResponse {
         CompileResponse {
-            artifact_url: format!("/artifacts/{key}.wasm"),
+            artifact_url: Some(format!("/artifacts/{key}.wasm")),
             compilation_time_ms: 42,
             warnings: Vec::new(),
+            errors: Vec::new(),
             cache_hit: false,
         }
     }
@@ -459,7 +461,10 @@ mod tests {
         assert_eq!(cache.entries[&key].wasm_path, wasm_path);
         assert!(!cache.entry_dir(&key).join("artifact.wasm").exists());
         let response = cache.lookup(&key).await.unwrap();
-        assert_eq!(response.artifact_url, format!("/artifacts/{key}.wasm"));
+        assert_eq!(
+            response.artifact_url,
+            Some(format!("/artifacts/{key}.wasm"))
+        );
         assert!(response.cache_hit);
         assert_eq!(response.compilation_time_ms, 17);
         assert_eq!(

@@ -7,7 +7,7 @@ use std::{
 
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
-use sycamore_playground_shared::{CompileRequest, CompilerDiagnostic};
+use sycamore_playground_shared::{CompileRequest, CompileResponse, CompilerDiagnostic};
 use tokio::{io::AsyncReadExt, time::timeout};
 
 /// Durable compilation data, independent of runtime URLs and cache-hit status.
@@ -53,22 +53,34 @@ impl Compiler {
         tokio::fs::write(self.work_dir.join("src/main.rs"), &request.code)
             .await
             .map_err(CompileError::io)?;
-        let output = self.run_cargo(limit).await?;
-        let (warnings, diagnostics) = parse_diagnostics(&output.stdout);
+        let output = self.run_cargo(limit).await.map_err(|mut error| {
+            error.response.compilation_time_ms =
+                started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+            error
+        })?;
+        let (warnings, errors) = parse_diagnostics(&output.stdout);
         if !output.status.success() {
             tracing::warn!(
                 exit_status = %output.status,
                 duration_ms = started.elapsed().as_millis() as u64,
                 "Compilation failed"
             );
-            return Err(CompileError {
-                status: StatusCode::BAD_REQUEST,
-                message: format!(
-                    "Compilation failed:\n{}{}",
-                    diagnostics,
-                    String::from_utf8_lossy(&output.stderr),
+            let mut error = CompileError::new(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Compilation failed:\n{}",
+                    String::from_utf8_lossy(&output.stderr)
                 ),
-            });
+            );
+            // Cargo can fail without emitting a rustc diagnostic (e.g. dependency
+            // resolution failures). Retain stderr as a structured fallback then.
+            if !errors.is_empty() {
+                error.response.errors = errors;
+            }
+            error.response.warnings = warnings;
+            error.response.compilation_time_ms =
+                started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+            return Err(error);
         }
         let compilation_time_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
         let wasm = tokio::fs::read(
@@ -140,10 +152,7 @@ impl Compiler {
             Ok(Err(error)) => CompileError::io(error),
             Err(_) => {
                 tracing::warn!(timeout_secs = limit.as_secs(), "Compilation timed out");
-                CompileError {
-                    status: StatusCode::REQUEST_TIMEOUT,
-                    message: "Compilation timed out".to_owned(),
-                }
+                CompileError::new(StatusCode::REQUEST_TIMEOUT, "Compilation timed out")
             }
         };
         #[cfg(unix)]
@@ -158,9 +167,9 @@ impl Compiler {
     }
 }
 
-fn parse_diagnostics(stdout: &[u8]) -> (Vec<CompilerDiagnostic>, String) {
+fn parse_diagnostics(stdout: &[u8]) -> (Vec<CompilerDiagnostic>, Vec<CompilerDiagnostic>) {
     let mut warnings = Vec::new();
-    let mut rendered = String::new();
+    let mut errors = Vec::new();
     for line in stdout.split(|byte| *byte == b'\n') {
         let Ok(event) = serde_json::from_slice::<serde_json::Value>(line) else {
             continue;
@@ -169,39 +178,108 @@ fn parse_diagnostics(stdout: &[u8]) -> (Vec<CompilerDiagnostic>, String) {
             continue;
         }
         let message = &event["message"];
-        if let Some(text) = message["rendered"].as_str() {
-            rendered.push_str(text);
-        }
-        if message["level"] == "warning" {
-            match serde_json::from_value(message.clone()) {
-                Ok(warning) => warnings.push(warning),
-                Err(error) => tracing::warn!(%error, "Failed to parse compiler warning"),
-            }
+        let diagnostics = match message["level"].as_str() {
+            Some("warning") => &mut warnings,
+            Some("error") => &mut errors,
+            _ => continue,
+        };
+        match serde_json::from_value(message.clone()) {
+            Ok(diagnostic) => diagnostics.push(diagnostic),
+            Err(error) => tracing::warn!(%error, "Failed to parse compiler diagnostic"),
         }
     }
-    (warnings, rendered)
+    (warnings, errors)
 }
 
 #[derive(Debug)]
 pub(crate) struct CompileError {
     pub status: StatusCode,
-    pub message: String,
+    pub response: CompileResponse,
 }
 
 impl CompileError {
+    pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            response: CompileResponse {
+                artifact_url: None,
+                compilation_time_ms: 0,
+                warnings: Vec::new(),
+                errors: vec![CompilerDiagnostic {
+                    message: message.into(),
+                    rendered: None,
+                    spans: Vec::new(),
+                }],
+                cache_hit: false,
+            },
+        }
+    }
+
     pub fn io(error: std::io::Error) -> Self {
         tracing::error!(%error, "Compilation I/O error");
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: "Compilation I/O error".to_owned(),
-        }
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "Compilation I/O error")
     }
 }
 
 impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
+        for (index, error) in self.response.errors.iter().enumerate() {
+            if index > 0 {
+                f.write_str("\n")?;
+            }
+            f.write_str(error.rendered.as_deref().unwrap_or(&error.message))?;
+        }
+        Ok(())
     }
 }
 
 impl std::error::Error for CompileError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_structured_errors_and_warnings() {
+        let span = serde_json::json!({
+            "file_name": "src/main.rs",
+            "line_start": 2, "line_end": 2,
+            "column_start": 5, "column_end": 12,
+            "is_primary": true
+        });
+        let event = |level: &str| {
+            serde_json::json!({
+                "reason": "compiler-message",
+                "message": {
+                    "level": level,
+                    "message": format!("a {level}"),
+                    "rendered": format!("rendered {level}\n"),
+                    "spans": [span.clone()]
+                }
+            })
+            .to_string()
+        };
+        let stdout = format!(
+            "not json\n{}\n{}\n{}\n{}\n",
+            event("warning"),
+            event("error"),
+            event("note"),
+            serde_json::json!({"reason": "build-finished", "success": false})
+        );
+        let (warnings, errors) = parse_diagnostics(stdout.as_bytes());
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(warnings[0].message, "a warning");
+        assert_eq!(errors[0].message, "a error");
+        assert_eq!(errors[0].rendered.as_deref(), Some("rendered error\n"));
+        assert_eq!(errors[0].spans[0].line_start, 2);
+        assert!(errors[0].spans[0].is_primary);
+    }
+
+    #[test]
+    fn ignores_unrelated_cargo_output() {
+        let (warnings, errors) = parse_diagnostics(b"{\"reason\":\"compiler-artifact\"}\n");
+        assert!(warnings.is_empty());
+        assert!(errors.is_empty());
+    }
+}

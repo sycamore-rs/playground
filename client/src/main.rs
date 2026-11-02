@@ -84,17 +84,20 @@ async fn compile(code: String) -> Result<String, String> {
         .send()
         .await
         .map_err(|error| format!("Could not reach the compilation server: {error}"))?;
-    if !response.ok() {
-        let status = response.status();
-        let message = response.text().await.map_err(|error| {
-            format!("HTTP {status}; could not read the error response: {error}")
-        })?;
-        return Err(format!("HTTP {status}\n{message}"));
-    }
-    let metadata = response
-        .json::<CompileResponse>()
+    let status = response.status();
+    let body = response
+        .text()
         .await
-        .map_err(|error| format!("Invalid compilation metadata: {error}"))?;
+        .map_err(|error| format!("HTTP {status}; could not read the response: {error}"))?;
+    // Compile failures use the same JSON schema as successes. Keep a fallback
+    // for non-JSON errors from proxies or request validation.
+    let metadata = serde_json::from_str::<CompileResponse>(&body).map_err(|error| {
+        if response.ok() {
+            format!("Invalid compilation metadata: {error}")
+        } else {
+            format!("HTTP {status}\n{body}")
+        }
+    })?;
     serde_json::to_string_pretty(&metadata)
         .map_err(|error| format!("Could not display compilation metadata: {error}"))
 }

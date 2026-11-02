@@ -8,17 +8,21 @@ pub struct CompileRequest {
     pub code: String,
 }
 
-/// Successful compilation metadata. Fetch `artifact_url` separately for raw WASM.
+/// Compilation result, for both successful and unsuccessful compilations.
+/// On success, fetch `artifact_url` separately for raw WASM; on failure it is `None`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompileResponse {
-    pub artifact_url: String,
+    pub artifact_url: Option<String>,
     /// Duration of the original compilation, including on cache hits.
+    /// May be zero for service-level failures.
     pub compilation_time_ms: u64,
     pub warnings: Vec<CompilerDiagnostic>,
+    pub errors: Vec<CompilerDiagnostic>,
     pub cache_hit: bool,
 }
 
-/// A warning emitted by rustc, including its human-readable rendering.
+/// A compiler warning or error, including its human-readable rendering.
+/// Server-level errors may have no rendering or source spans.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerDiagnostic {
     pub message: String,

@@ -159,9 +159,10 @@ impl AppState {
             .compile(&request, Duration::from_secs(5))
             .await?;
         let response = CompileResponse {
-            artifact_url: format!("/artifacts/{key}.wasm"),
+            artifact_url: Some(format!("/artifacts/{key}.wasm")),
             compilation_time_ms: artifact.metadata.compilation_time_ms,
             warnings: artifact.metadata.warnings,
+            errors: Vec::new(),
             cache_hit: false,
         };
         // Publish an independent copy while still holding the compilation lock.
@@ -178,10 +179,10 @@ impl AppState {
             .map_err(|error| match error {
                 CacheError::Capacity => {
                     tracing::warn!("Artifact cache capacity exhausted");
-                    CompileError {
-                        status: StatusCode::SERVICE_UNAVAILABLE,
-                        message: "Artifact cache is full; please retry later".to_owned(),
-                    }
+                    CompileError::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Artifact cache is full; please retry later",
+                    )
                 }
                 CacheError::Io(error) => CompileError::io(error),
             })?;
@@ -204,7 +205,8 @@ fn env_number(name: &str, default: u64) -> u64 {
 impl IntoResponse for CompileError {
     fn into_response(self) -> Response {
         let status = self.status;
-        let mut response = (status, self.message).into_response();
+        let mut response =
+            (status, [("Cache-Control", "no-store")], Json(self.response)).into_response();
         if status == StatusCode::SERVICE_UNAVAILABLE {
             response
                 .headers_mut()
@@ -232,7 +234,13 @@ async fn compile_handler(
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [("Retry-After", "5")],
-            "Compile queue is full; please retry later",
+            Json(
+                CompileError::new(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Compile queue is full; please retry later",
+                )
+                .response,
+            ),
         )
             .into_response();
     };
@@ -248,7 +256,41 @@ async fn compile_handler(
         Ok(Err(error)) => error.into_response(),
         Err(error) => {
             tracing::error!(%error, "Compilation task failed");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Compilation task failed").into_response()
+            CompileError::new(StatusCode::INTERNAL_SERVER_ERROR, "Compilation task failed")
+                .into_response()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn compile_failures_return_json_with_no_artifact() {
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::REQUEST_TIMEOUT,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::SERVICE_UNAVAILABLE,
+        ] {
+            let response = CompileError::new(status, "Compilation failed").into_response();
+            assert_eq!(response.status(), status);
+            assert_eq!(response.headers()["content-type"], "application/json");
+            assert_eq!(response.headers()["cache-control"], "no-store");
+            if status == StatusCode::SERVICE_UNAVAILABLE {
+                assert_eq!(response.headers()["retry-after"], "300");
+            }
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert!(json["artifact_url"].is_null());
+            let result: CompileResponse = serde_json::from_slice(&body).unwrap();
+            assert_eq!(result.artifact_url, None);
+            assert_eq!(result.errors[0].message, "Compilation failed");
+            assert!(result.warnings.is_empty());
+            assert!(!result.cache_hit);
         }
     }
 }
