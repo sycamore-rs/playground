@@ -23,7 +23,7 @@ pub(crate) async fn build(
         .prefix(".precompile-")
         .tempdir_in(cache_root)?;
     for &(name, code) in EXAMPLES {
-        eprintln!("Precompiling {name}...");
+        tracing::info!(example = name, "Precompiling example");
         let request = CompileRequest {
             code: code.to_owned(),
         };
@@ -50,10 +50,10 @@ pub(crate) async fn build(
         Err(error) => return Err(error.into()),
     }
     tokio::fs::rename(staging.path(), &destination).await?;
-    eprintln!(
-        "Precompiled {} example(s) into {}",
-        EXAMPLES.len(),
-        destination.display()
+    tracing::info!(
+        example_count = EXAMPLES.len(),
+        directory = %destination.display(),
+        "Precompiled bundle built"
     );
     Ok(())
 }
@@ -68,7 +68,7 @@ pub(crate) async fn register(cache_root: &Path, cache: &mut ArtifactCache) -> io
         Ok(metadata) if metadata.is_dir() => {}
         Ok(_) => return Err(io::Error::other("precompiled path is not a directory")),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            eprintln!("No precompiled bundle; run with --precompile to build it");
+            tracing::warn!("No precompiled bundle; run with --precompile to build it");
             return Ok(());
         }
         Err(error) => return Err(error),
@@ -90,6 +90,7 @@ pub(crate) async fn register(cache_root: &Path, cache: &mut ArtifactCache) -> io
             .register_precompiled(&request, directory.join("artifact.wasm"), metadata)
             .await
             .map_err(io::Error::other)?;
+        tracing::info!(example = name, "Registered pinned precompiled artifact");
     }
     Ok(())
 }

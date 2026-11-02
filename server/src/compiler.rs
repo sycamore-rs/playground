@@ -45,12 +45,22 @@ impl Compiler {
         limit: Duration,
     ) -> Result<CompiledArtifact, CompileError> {
         let started = Instant::now();
+        tracing::info!(
+            source_bytes = request.code.len(),
+            timeout_secs = limit.as_secs(),
+            "Compilation started"
+        );
         tokio::fs::write(self.work_dir.join("src/main.rs"), &request.code)
             .await
             .map_err(CompileError::io)?;
         let output = self.run_cargo(limit).await?;
         let (warnings, diagnostics) = parse_diagnostics(&output.stdout);
         if !output.status.success() {
+            tracing::warn!(
+                exit_status = %output.status,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "Compilation failed"
+            );
             return Err(CompileError {
                 status: StatusCode::BAD_REQUEST,
                 message: format!(
@@ -67,6 +77,12 @@ impl Compiler {
         )
         .await
         .map_err(CompileError::io)?;
+        tracing::info!(
+            compilation_time_ms,
+            warning_count = warnings.len(),
+            wasm_bytes = wasm.len(),
+            "Compilation succeeded"
+        );
         Ok(CompiledArtifact {
             wasm,
             metadata: CompilationMetadata {
@@ -122,10 +138,13 @@ impl Compiler {
         let error = match result {
             Ok(Ok(output)) => return Ok(output),
             Ok(Err(error)) => CompileError::io(error),
-            Err(_) => CompileError {
-                status: StatusCode::REQUEST_TIMEOUT,
-                message: "Compilation timed out".to_owned(),
-            },
+            Err(_) => {
+                tracing::warn!(timeout_secs = limit.as_secs(), "Compilation timed out");
+                CompileError {
+                    status: StatusCode::REQUEST_TIMEOUT,
+                    message: "Compilation timed out".to_owned(),
+                }
+            }
         };
         #[cfg(unix)]
         let _ = nix::sys::signal::killpg(
@@ -156,7 +175,7 @@ fn parse_diagnostics(stdout: &[u8]) -> (Vec<CompilerDiagnostic>, String) {
         if message["level"] == "warning" {
             match serde_json::from_value(message.clone()) {
                 Ok(warning) => warnings.push(warning),
-                Err(error) => eprintln!("Failed to parse compiler warning: {error}"),
+                Err(error) => tracing::warn!(%error, "Failed to parse compiler warning"),
             }
         }
     }
@@ -171,7 +190,7 @@ pub(crate) struct CompileError {
 
 impl CompileError {
     pub fn io(error: std::io::Error) -> Self {
-        eprintln!("Compilation I/O error: {error}");
+        tracing::error!(%error, "Compilation I/O error");
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: "Compilation I/O error".to_owned(),

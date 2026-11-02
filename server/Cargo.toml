@@ -12,6 +12,8 @@ sha2 = "0.10"
 tempfile = "3"
 sycamore-playground-shared = { path = "../shared" }
 tokio = { version = "1.54.1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process"] }

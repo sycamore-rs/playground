@@ -23,6 +23,8 @@ Run Rust commands from the repository root unless a command explicitly says othe
 - `cargo build --release` — build the server in release mode.
 - `cargo run --package sycamore-playground-server -- --precompile` — compile all examples registered in `server/src/precompiled.rs` into `artifact-cache/precompiled/` and exit. Requires the WASM target. Run offline, not alongside a running server: both modes use the same compilation workspace.
 
+Server logs use `tracing`, writing timestamped, leveled events to stderr. The default level is `info` for the server; set `RUST_LOG=sycamore_playground_server=debug` for cache activity and successful health requests. HTTP logs contain route templates, status codes, and latency, never submitted source, query strings, or full compiler diagnostics.
+
 The runtime compilation environment needs the `wasm32-unknown-unknown` Rust target. The Docker image sets this up for the container. Docker builds and container-based sample compilation checks are not required unless explicitly requested.
 
 ## Implementation notes

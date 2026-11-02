@@ -72,6 +72,12 @@ impl ArtifactCache {
             .rand_bytes(16)
             .tempdir_in(root)?;
 
+        tracing::info!(
+            max_bytes,
+            max_entries,
+            grace_secs = grace.as_secs(),
+            "Artifact cache initialized"
+        );
         Ok(Self {
             namespace,
             entries: HashMap::new(),
@@ -173,6 +179,7 @@ impl ArtifactCache {
             return Err(CacheError::Io(error));
         }
 
+        tracing::debug!(artifact_id = %key, bytes = entry_size, pinned, "Artifact cached");
         self.entries.insert(
             key,
             Entry {
@@ -311,6 +318,7 @@ impl ArtifactCache {
             }
             tokio::fs::remove_dir_all(self.entry_dir(&victim_key)).await?;
             self.entries.remove(&victim_key);
+            tracing::debug!(artifact_id = %victim_key, "Evicted cached artifact");
         }
         Ok(())
     }

@@ -2,12 +2,17 @@ mod cache;
 mod compiler;
 mod precompiled;
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{MatchedPath, Path, Request, State},
     http::StatusCode,
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -18,6 +23,15 @@ use tokio::sync::{Mutex, Semaphore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "sycamore_playground_server=info".into()),
+        )
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .init();
+
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let precompile = match args.as_slice() {
         [] => false,
@@ -33,6 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => return Err("Unknown arguments; use --help for usage".into()),
     };
+    tracing::info!(
+        mode = if precompile { "precompile" } else { "serve" },
+        "Starting server binary"
+    );
     let cache_root = PathBuf::from("./artifact-cache");
     let compiler = Compiler::initialize(PathBuf::from("./compilation-env")).await?;
     if precompile {
@@ -45,11 +63,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health_check))
         .route("/compile", post(compile_handler))
         .route("/artifacts/{filename}", get(artifact_handler))
-        .with_state(state);
+        .with_state(state)
+        .layer(middleware::from_fn(log_request));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    tracing::info!(address = %listener.local_addr()?, "HTTP server listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn log_request(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    // Log the route template, never query strings, source code, or arbitrary URLs.
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|path| path.as_str().to_owned())
+        .unwrap_or_else(|| "<unmatched>".to_owned());
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let status = response.status().as_u16();
+    let duration_ms = started.elapsed().as_secs_f64() * 1000.0;
+    if route == "/health" && response.status().is_success() {
+        tracing::debug!(%method, %route, status, duration_ms, "HTTP request completed");
+    } else {
+        tracing::info!(%method, %route, status, duration_ms, "HTTP request completed");
+    }
+    response
 }
 
 async fn index() -> &'static str {
@@ -107,8 +147,10 @@ impl AppState {
             key
         };
 
+        tracing::debug!(artifact_id = %key, "Cache miss; waiting for compilation lock");
         let _build_lock = self.build_lock.lock().await;
         if let Some(response) = self.cache.lock().await.lookup(&key).await {
+            tracing::debug!(artifact_id = %key, "Compilation cache populated while waiting");
             return Ok(response);
         }
 
@@ -134,10 +176,13 @@ impl AppState {
             )
             .await
             .map_err(|error| match error {
-                CacheError::Capacity => CompileError {
-                    status: StatusCode::SERVICE_UNAVAILABLE,
-                    message: "Artifact cache is full; please retry later".to_owned(),
-                },
+                CacheError::Capacity => {
+                    tracing::warn!("Artifact cache capacity exhausted");
+                    CompileError {
+                        status: StatusCode::SERVICE_UNAVAILABLE,
+                        message: "Artifact cache is full; please retry later".to_owned(),
+                    }
+                }
                 CacheError::Io(error) => CompileError::io(error),
             })?;
         Ok(response)
@@ -178,10 +223,12 @@ async fn compile_handler(
         let mut cache = state.cache.lock().await;
         let key = cache.key(&payload);
         if let Some(metadata) = cache.lookup(&key).await {
+            tracing::debug!(artifact_id = %key, "Compilation cache hit");
             return ([("Cache-Control", "no-store")], Json(metadata)).into_response();
         }
     }
     let Ok(permit) = state.compile_slots.clone().try_acquire_owned() else {
+        tracing::warn!("Compile queue is full; rejecting request");
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [("Retry-After", "5")],
@@ -200,7 +247,7 @@ async fn compile_handler(
         Ok(Ok(metadata)) => ([("Cache-Control", "no-store")], Json(metadata)).into_response(),
         Ok(Err(error)) => error.into_response(),
         Err(error) => {
-            eprintln!("Compilation task failed: {error}");
+            tracing::error!(%error, "Compilation task failed");
             (StatusCode::INTERNAL_SERVER_ERROR, "Compilation task failed").into_response()
         }
     }
