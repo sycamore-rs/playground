@@ -1,0 +1,8 @@
+[package]
+name = "sycamore-playground-client"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+sycamore = "0.9.4"
