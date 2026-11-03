@@ -7,3 +7,12 @@ edition = "2024"
 sycamore = "0.9"
 # Keep the CLI in Dockerfile and flake.nix in sync with this exact version.
 wasm-bindgen = "=0.2.126"
+
+# Keep submitted code quick to rebuild, without shipping development debug info.
+[profile.dev]
+debug = 0
+
+# Dependencies are warmed by precompilation and reused across submissions.
+# Optimize those for small WASM without enabling expensive whole-program LTO.
+[profile.dev.package."*"]
+opt-level = "s"
