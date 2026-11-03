@@ -760,7 +760,9 @@ dependencies = [
  "serde_json",
  "sycamore",
  "sycamore-playground-shared",
+ "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

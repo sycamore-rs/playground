@@ -6,8 +6,12 @@
     "build:editor": "esbuild js/editor.js --bundle --format=iife --global-name=PlaygroundEditor --target=es2020 --minify --outfile=generated/editor.js"
   },
   "dependencies": {
-    "codemirror": "^6.0.2",
-    "@codemirror/lang-rust": "^6.0.2"
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
+    "codemirror": "^6.0.2"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

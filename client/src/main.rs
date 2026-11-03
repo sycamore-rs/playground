@@ -1,7 +1,24 @@
+use std::{cell::RefCell, rc::Rc};
+
 use gloo_net::http::Request;
 use sycamore::prelude::*;
 use sycamore_playground_shared::{CompileRequest, CompileResponse, DEFAULT_CODE};
+use wasm_bindgen::{JsCast, prelude::*};
 use wasm_bindgen_futures::spawn_local;
+
+#[wasm_bindgen]
+extern "C" {
+    type CodeEditor;
+
+    #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = mount)]
+    fn mount_editor(host: &web_sys::HtmlElement, code: &str) -> CodeEditor;
+
+    #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = getCode)]
+    fn editor_code(editor: &CodeEditor) -> String;
+
+    #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = destroy)]
+    fn destroy_editor(editor: &CodeEditor);
+}
 
 fn main() {
     sycamore::render(App);
@@ -9,7 +26,23 @@ fn main() {
 
 #[component]
 fn App() -> View {
-    let code = create_signal(DEFAULT_CODE.to_owned());
+    let editor_host = create_node_ref();
+    let editor = Rc::new(RefCell::new(None::<CodeEditor>));
+    on_mount({
+        let editor = Rc::clone(&editor);
+        move || {
+            let host = editor_host.get().unchecked_into::<web_sys::HtmlElement>();
+            *editor.borrow_mut() = Some(mount_editor(&host, DEFAULT_CODE));
+        }
+    });
+    on_cleanup({
+        let editor = Rc::clone(&editor);
+        move || {
+            if let Some(editor) = editor.borrow_mut().take() {
+                destroy_editor(&editor);
+            }
+        }
+    });
     let running = create_signal(false);
     let output = create_signal("Click Run to compile and run the code.".to_owned());
     let preview = create_signal(None::<String>);
@@ -18,7 +51,9 @@ fn App() -> View {
         if running.get() {
             return;
         }
-        let submitted_code = code.get_clone();
+        let Some(submitted_code) = editor.borrow().as_ref().map(editor_code) else {
+            return;
+        };
         running.set(true);
         // Remove the previous browsing context, including its timers and listeners.
         preview.set(None);
@@ -44,9 +79,13 @@ fn App() -> View {
     };
 
     view! {
-        main(class="min-h-screen bg-gray-50 px-4 py-8 text-gray-900 dark:bg-gray-950 dark:text-gray-100") {
+        main(
+            class="min-h-screen bg-gray-50 px-4 py-8 text-gray-900 dark:bg-gray-950 dark:text-gray-100",
+        ) {
             div(class="mx-auto max-w-7xl space-y-6") {
-                header(class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 bg-gray-100 p-4 dark:border-gray-800 dark:bg-gray-900") {
+                header(
+                    class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 bg-gray-100 p-4 dark:border-gray-800 dark:bg-gray-900",
+                ) {
                     div(class="flex min-w-0 items-center gap-3") {
                         img(src="assets/sycamore-logo.svg", alt="", class="h-10 w-10 shrink-0")
                         h1(class="text-xl font-semibold sm:text-2xl") { "Sycamore Playground" }
@@ -56,48 +95,44 @@ fn App() -> View {
                         on:click=run,
                         disabled=move || running.get(),
                         class="shrink-0 rounded bg-orange-700 px-5 py-2 font-medium text-white hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-100 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400 dark:focus:ring-offset-gray-900",
-                    ) {
-                        (if running.get() { "Running…" } else { "Run" })
-                    }
+                    ) { (if running.get() { "Running…" } else { "Run" }) }
                 }
                 div(class="grid grid-cols-1 gap-6 md:grid-cols-2") {
-                div(class="min-w-0 space-y-6") {
-                div(class="space-y-2") {
-                    label(r#for="code", class="block text-sm font-medium") { "Rust code" }
-                    textarea(
-                        id="code",
-                        bind:value=code,
-                        "spellcheck"="false",
-                        class="min-h-96 w-full resize-y rounded border border-gray-300 bg-white p-4 font-mono text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200 dark:border-gray-700 dark:bg-gray-900 dark:focus:border-orange-400 dark:focus:ring-orange-800",
-                    )
-                }
-                }
-                div(class="min-w-0 space-y-6") {
-                (match preview.get_clone() {
-                    Some(document) => view! {
-                        section(class="space-y-2") {
-                            h2(class="text-lg font-medium") { "Output" }
-                            iframe(
-                                title="Playground output",
-                                "sandbox"="allow-scripts",
-                                referrerpolicy="no-referrer",
-                                srcdoc=document,
-                                class="min-h-80 w-full rounded border border-gray-300 bg-white dark:border-gray-700",
+                    div(class="min-w-0 space-y-6") {
+                        div(class="space-y-2") {
+                            div(id="code-label", class="text-sm font-medium") { "Rust code" }
+                            div(
+                                r#ref=editor_host,
+                                class="min-h-96 w-full overflow-hidden rounded border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900",
                             )
                         }
-                    },
-                    None => View::default(),
-                })
-                section(class="space-y-2") {
-                    h2(class="text-lg font-medium") { "Output metadata" }
-                    pre(
-                        aria-live="polite",
-                        class="min-h-40 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-gray-300 bg-white p-4 font-mono text-sm dark:border-gray-700 dark:bg-gray-900",
-                    ) {
-                        (output.get_clone())
                     }
-                }
-                }
+                    div(class="min-w-0 space-y-6") {
+                        (match preview.get_clone() {
+                            Some(document) => {
+                                view! {
+                                    section(class="space-y-2") {
+                                        h2(class="text-lg font-medium") { "Output" }
+                                        iframe(
+                                            title="Playground output",
+                                            "sandbox"="allow-scripts",
+                                            referrerpolicy="no-referrer",
+                                            srcdoc=document,
+                                            class="min-h-80 w-full rounded border border-gray-300 bg-white dark:border-gray-700",
+                                        )
+                                    }
+                                }
+                            }
+                            None => View::default(),
+                        })
+                        section(class="space-y-2") {
+                            h2(class="text-lg font-medium") { "Output metadata" }
+                            pre(
+                                aria-live="polite",
+                                class="min-h-40 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-gray-300 bg-white p-4 font-mono text-sm dark:border-gray-700 dark:bg-gray-900",
+                            ) { (output.get_clone()) }
+                        }
+                    }
                 }
             }
         }
