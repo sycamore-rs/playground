@@ -85,6 +85,19 @@ export function getCode(editor) {
     return editor.view.state.doc.toString();
 }
 
+// Rust diagnostics use one-based lines and Unicode character columns.
+export function goToLocation(editor, line, column) {
+    const { view } = editor;
+    const target = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)));
+    const offset = Array.from(target.text).slice(0, Math.max(0, column - 1)).join("").length;
+    view.dispatch({
+        selection: { anchor: target.from + offset },
+        effects: EditorView.scrollIntoView(target.from + offset, { y: "center" }),
+    });
+    view.dom.scrollIntoView({ block: "nearest" });
+    view.focus();
+}
+
 export function destroy(editor) {
     editor.document.removeEventListener("keydown", editor.runShortcut, true);
     editor.media.removeEventListener("change", editor.updateTheme);
