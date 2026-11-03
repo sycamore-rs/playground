@@ -15,6 +15,7 @@
       devShells.${system}.default = pkgs.mkShell {
         # Keep the CLI version aligned with server/Cargo.toml.template and Dockerfile.
         packages = [
+          pkgs.nodejs_24
           pkgs.azure-cli
           pkgs.wasm-bindgen-cli_0_2_126
         ];

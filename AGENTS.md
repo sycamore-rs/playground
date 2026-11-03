@@ -20,6 +20,8 @@ Run Rust commands from the repository root unless a command explicitly says othe
 
 - `cargo check --workspace` — check workspace crates.
 - `cargo check --package sycamore-playground-client --target wasm32-unknown-unknown` — check the browser target.
+- Frontend JavaScript dependencies require Node.js 24 and npm (Node is available in `nix develop`). Run `cd client && npm ci` after checkout or dependency changes. Commit `client/package-lock.json`; do not commit `client/node_modules/` or `client/generated/`.
+- Trunk's `pre_build` hook runs `npm run build:editor` on each build, bundling `client/js/editor.js` and CodeMirror with esbuild. The hook does not install dependencies. Trunk fingerprints the generated script and watches the JS sources, ignoring `node_modules/` and `generated/` to avoid rebuild loops. To bundle the editor alone, run `cd client && npm run build:editor`.
 - Run the backend with `cargo run --package sycamore-playground-server`, then run `cd client && trunk serve` in another terminal. Trunk proxies `/compile` and `/artifacts/` to the backend. The client always displays compilation metadata and, on success with an artifact URL, creates a fresh sandboxed iframe that loads the JavaScript glue and runs the WASM. The iframe permits scripts but not same-origin access; keep these permissions separate so submitted code cannot access the editor.
 - `cargo test --workspace` — run workspace tests.
 - `cargo build --release` — build the server in release mode.

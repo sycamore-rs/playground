@@ -1,0 +1,4 @@
+# Frontend dependencies and generated assets are not needed to build the server.
+client/node_modules
+client/generated
+client/dist

@@ -30,6 +30,17 @@ jobs:
         with:
           tool: trunk@0.21.14
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install editor build dependencies
+        working-directory: client
+        run: npm ci
+
       - name: Build frontend
         working-directory: client
         env:

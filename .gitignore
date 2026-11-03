@@ -4,5 +4,7 @@
 /.direnv
 
 client/dist/**/*
+/client/node_modules/
+/client/generated/
 
 /.playwright-mcp
