@@ -43,7 +43,7 @@ function theme(dark) {
     ];
 }
 
-export function mount(host, code, onRun) {
+export function mount(host, code, onRun, onChange) {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const appearance = new Compartment();
     const view = new EditorView({
@@ -51,6 +51,9 @@ export function mount(host, code, onRun) {
         doc: code,
         extensions: [
             basicSetup,
+            EditorView.updateListener.of((update) => {
+                if (update.docChanged) onChange(update.state.doc.toString());
+            }),
             rust(),
             indentUnit.of("    "),
             EditorState.tabSize.of(4),

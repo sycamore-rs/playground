@@ -11,7 +11,12 @@ extern "C" {
     type CodeEditor;
 
     #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = mount)]
-    fn mount_editor(host: &web_sys::HtmlElement, code: &str, on_run: &JsValue) -> CodeEditor;
+    fn mount_editor(
+        host: &web_sys::HtmlElement,
+        code: &str,
+        on_run: &JsValue,
+        on_change: &JsValue,
+    ) -> CodeEditor;
 
     #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = getCode)]
     fn editor_code(editor: &CodeEditor) -> String;
@@ -107,19 +112,48 @@ fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
     }
 }
 
+const CODE_STORAGE_KEY: &str = "sycamore-playground.code";
+
+/// Returns browser localStorage when it is available and accessible.
+fn local_storage() -> Option<web_sys::Storage> {
+    web_sys::window()?.local_storage().ok().flatten()
+}
+
+/// Restores saved code, using the default if storage is unavailable or the code is blank.
+fn load_code() -> String {
+    local_storage()
+        .and_then(|storage| storage.get_item(CODE_STORAGE_KEY).ok().flatten())
+        .filter(|code| !code.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_CODE.to_owned())
+}
+
+/// Saves editor code to localStorage without propagating storage errors.
+fn save_code(code: &str) {
+    if let Some(storage) = local_storage() {
+        // Blocked or full storage must not interrupt editing.
+        let _ = storage.set_item(CODE_STORAGE_KEY, code);
+    }
+}
+
 #[component(inline_props)]
 fn Editor(editor: EditorHandle, on_run: impl Fn() + 'static) -> View {
     let editor_host = create_node_ref();
     on_mount(move || {
         let on_run = Closure::<dyn Fn()>::new(on_run);
+        let on_change = Closure::<dyn Fn(String)>::new(|code: String| save_code(&code));
         let host = editor_host.get().unchecked_into::<web_sys::HtmlElement>();
-        *editor.borrow_mut() = Some(mount_editor(&host, DEFAULT_CODE, on_run.as_ref()));
+        *editor.borrow_mut() = Some(mount_editor(
+            &host,
+            &load_code(),
+            on_run.as_ref(),
+            on_change.as_ref(),
+        ));
         on_cleanup(move || {
             if let Some(editor) = editor.borrow_mut().take() {
                 destroy_editor(&editor);
             }
-            // Keep the Rust callback alive until the JS listeners are removed.
-            drop(on_run);
+            // Keep the Rust callbacks alive until the JS listeners are removed.
+            drop((on_run, on_change));
         });
     });
 
