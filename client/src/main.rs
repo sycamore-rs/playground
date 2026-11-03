@@ -2,7 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use gloo_net::http::Request;
 use sycamore::prelude::*;
-use sycamore_playground_shared::{CompileRequest, CompileResponse, DEFAULT_CODE};
+use sycamore_playground_shared::{
+    CompileRequest, CompileResponse, CompilerDiagnostic, DEFAULT_CODE,
+};
 use wasm_bindgen::{JsCast, prelude::*};
 use wasm_bindgen_futures::spawn_local;
 
@@ -31,12 +33,28 @@ fn main() {
 
 type EditorHandle = Rc<RefCell<Option<CodeEditor>>>;
 
+#[derive(Clone)]
+enum CompilationState {
+    Idle,
+    Compiling,
+    Complete(CompileResponse),
+    Failed(String),
+}
+
 #[component]
 fn App() -> View {
     let editor = EditorHandle::default();
     let running = create_signal(false);
-    let output = create_signal("Click Run to compile and run the code.".to_owned());
+    let output = create_signal(CompilationState::Idle);
     let preview = create_signal(None::<String>);
+    let expand_diagnostics = create_memo(move || {
+        preview.with(Option::is_none)
+            && output.with(|state| match state {
+                CompilationState::Complete(metadata) => !metadata.errors.is_empty(),
+                CompilationState::Failed(_) => true,
+                _ => false,
+            })
+    });
 
     let run_editor = Rc::clone(&editor);
     let run = move || {
@@ -49,7 +67,7 @@ fn App() -> View {
         running.set(true);
         // Remove the previous browsing context, including its timers and listeners.
         preview.set(None);
-        output.set("Compiling…".to_owned());
+        output.set(CompilationState::Compiling);
         spawn_local(async move {
             let result = compile(submitted_code).await;
             match result {
@@ -59,12 +77,9 @@ fn App() -> View {
                             preview.set(Some(preview_document(artifact_url)));
                         }
                     }
-                    output.set(
-                        serde_json::to_string_pretty(&metadata)
-                            .unwrap_or_else(|error| format!("Could not display metadata: {error}")),
-                    );
+                    output.set(CompilationState::Complete(metadata));
                 }
-                Err(error) => output.set(format!("Error: {error}")),
+                Err(error) => output.set(CompilationState::Failed(error)),
             }
             running.set(false);
         });
@@ -79,8 +94,8 @@ fn App() -> View {
             div(class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2") {
                 Editor(editor=editor, on_run=run)
                 div(class="flex min-h-[55dvh] min-w-0 flex-col md:min-h-0") {
-                    Output(preview=preview, running=running)
-                    OutputMetadata(output=output)
+                    Output(preview=preview, running=running, expanded=expand_diagnostics)
+                    OutputMetadata(output=output, expanded=expand_diagnostics)
                 }
             }
         }
@@ -171,9 +186,17 @@ fn Editor(editor: EditorHandle, on_run: impl Fn() + 'static) -> View {
 }
 
 #[component(inline_props)]
-fn Output(preview: Signal<Option<String>>, running: Signal<bool>) -> View {
+fn Output(
+    preview: Signal<Option<String>>,
+    running: Signal<bool>,
+    expanded: ReadSignal<bool>,
+) -> View {
     view! {
-        section(class="flex min-h-72 flex-1 flex-col md:min-h-0") {
+        section(class=move || if expanded.get() {
+            "flex shrink-0 flex-col"
+        } else {
+            "flex min-h-72 flex-1 flex-col md:min-h-0"
+        }) {
             h2(
                 class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
             ) { "Output" }
@@ -192,7 +215,11 @@ fn Output(preview: Signal<Option<String>>, running: Signal<bool>) -> View {
                 None => {
                     view! {
                         div(
-                            class="flex flex-1 items-center justify-center px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500",
+                            class=move || if expanded.get() {
+                                "hidden"
+                            } else {
+                                "flex flex-1 items-center justify-center px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500"
+                            },
                         ) {
                             (if running.get() {
                                 "Compiling your app…"
@@ -208,16 +235,70 @@ fn Output(preview: Signal<Option<String>>, running: Signal<bool>) -> View {
 }
 
 #[component(inline_props)]
-fn OutputMetadata(output: Signal<String>) -> View {
+fn OutputMetadata(output: Signal<CompilationState>, expanded: ReadSignal<bool>) -> View {
     view! {
-        section(class="shrink-0 border-t border-gray-200 dark:border-gray-800") {
-            h2(
-                class="flex h-9 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
-            ) { "Output metadata" }
-            pre(
-                aria-live="polite",
-                class="max-h-48 overflow-auto whitespace-pre-wrap break-words bg-gray-50/50 px-4 py-3 font-mono text-xs leading-relaxed text-gray-600 md:max-h-40 dark:bg-gray-900/30 dark:text-gray-400",
-            ) { (output.get_clone()) }
+        section(
+            aria-label="Compilation details",
+            aria-live="polite",
+            class=move || if expanded.get() {
+                "min-h-0 max-h-[75dvh] flex-1 overflow-auto border-t border-gray-200 bg-gray-50/50 px-4 py-3 md:max-h-none dark:border-gray-800 dark:bg-gray-900/30"
+            } else {
+                "max-h-72 shrink-0 overflow-auto border-t border-gray-200 bg-gray-50/50 px-4 py-3 md:max-h-[40dvh] dark:border-gray-800 dark:bg-gray-900/30"
+            },
+        ) {
+            (match output.get_clone() {
+                CompilationState::Idle => view! {
+                    p(class="text-xs text-gray-500 dark:text-gray-400") { "Click Run to compile and run the code." }
+                },
+                CompilationState::Compiling => view! {
+                    p(class="text-xs text-gray-500 dark:text-gray-400", role="status") { "Compiling…" }
+                },
+                CompilationState::Complete(metadata) => {
+                    let summary = format!(
+                        "Finished in {}ms{}",
+                        metadata.compilation_time_ms,
+                        if metadata.cache_hit { " (cached)" } else { "" },
+                    );
+                    let cards = metadata.errors.into_iter().map(|diagnostic| diagnostic_card(diagnostic, false))
+                        .chain(metadata.warnings.into_iter().map(|diagnostic| diagnostic_card(diagnostic, true)))
+                        .collect::<Vec<_>>();
+                    let cards = View::from(cards);
+                    view! {
+                        p(class="text-xs font-medium text-gray-600 dark:text-gray-300") { (summary) }
+                        (cards)
+                    }
+                },
+                CompilationState::Failed(message) => diagnostic_card(CompilerDiagnostic {
+                    message,
+                    rendered: None,
+                    spans: Vec::new(),
+                }, false),
+            })
+        }
+    }
+}
+
+/// Displays one diagnostic as a colored card with readable compiler details.
+fn diagnostic_card(diagnostic: CompilerDiagnostic, warning: bool) -> View {
+    let (label, class) = if warning {
+        (
+            "Warning",
+            "mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
+        )
+    } else {
+        (
+            "Error",
+            "mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-950 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100",
+        )
+    };
+    let details = diagnostic
+        .rendered
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or(diagnostic.message);
+    view! {
+        article(class=class) {
+            h3(class="mb-2 text-xs font-semibold") { (label) }
+            pre(class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed") { (details) }
         }
     }
 }
@@ -250,11 +331,9 @@ async fn compile(code: String) -> Result<CompileResponse, String> {
             format!("HTTP {status}\n{body}")
         }
     })?;
-    if !response.ok() {
-        return Err(format!(
-            "HTTP {status}\n{}",
-            serde_json::to_string_pretty(&metadata).unwrap_or(body)
-        ));
+    // Compiler and service diagnostics remain structured even for non-2xx responses.
+    if !response.ok() && metadata.errors.is_empty() {
+        return Err(format!("Compilation request failed (HTTP {status})."));
     }
     Ok(metadata)
 }
