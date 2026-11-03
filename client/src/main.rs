@@ -280,25 +280,29 @@ fn OutputMetadata(output: Signal<CompilationState>, expanded: ReadSignal<bool>) 
 
 /// Displays one diagnostic as a colored card with readable compiler details.
 fn diagnostic_card(diagnostic: CompilerDiagnostic, warning: bool) -> View {
-    let (label, class) = if warning {
-        (
-            "Warning",
-            "mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
-        )
+    let class = if warning {
+        "mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
     } else {
-        (
-            "Error",
-            "mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-950 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100",
-        )
+        "mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-950 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100"
     };
     let details = diagnostic
         .rendered
         .filter(|text| !text.trim().is_empty())
         .unwrap_or(diagnostic.message);
+    let mut lines = details.lines();
+    let title = lines.next().unwrap_or_default().to_owned();
+    let body = lines.collect::<Vec<_>>().join("\n");
+    let body = if body.trim().is_empty() {
+        View::default()
+    } else {
+        view! {
+            pre(class="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed") { (body) }
+        }
+    };
     view! {
         article(class=class) {
-            h3(class="mb-2 text-xs font-semibold") { (label) }
-            pre(class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed") { (details) }
+            h3(class="break-words text-xs font-semibold") { (title) }
+            (body)
         }
     }
 }
