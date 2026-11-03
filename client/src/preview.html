@@ -12,6 +12,7 @@
 <body>
   <p id="playground-status" role="status">Loading compiled program…</p>
   <pre id="playground-error" role="alert" hidden></pre>
+  <script>__CONSOLE_BRIDGE__</script>
   <script type="module">
     // This document runs with an opaque origin: never add allow-same-origin
     // to the iframe sandbox. Submitted programs must not access the editor.
@@ -46,6 +47,7 @@
       await init({ module_or_path: await response.arrayBuffer() });
       status.remove();
     } catch (error) {
+      console.error(error);
       showError(error);
     }
   </script>

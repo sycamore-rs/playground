@@ -1,4 +1,8 @@
+mod console;
+
 use std::{cell::RefCell, rc::Rc};
+
+use console::{ConsoleEntry, ConsoleWindow, PreviewFrame};
 
 use gloo_net::http::Request;
 use sycamore::prelude::*;
@@ -50,6 +54,7 @@ fn App() -> View {
     let running = create_signal(false);
     let output = create_signal(CompilationState::Idle);
     let preview = create_signal(None::<String>);
+    let console_entries = create_signal(Vec::<ConsoleEntry>::new());
     let expand_diagnostics = create_memo(move || {
         preview.with(Option::is_none)
             && output.with(|state| match state {
@@ -70,6 +75,7 @@ fn App() -> View {
         running.set(true);
         // Remove the previous browsing context, including its timers and listeners.
         preview.set(None);
+        console_entries.set(Vec::new());
         output.set(CompilationState::Compiling);
         spawn_local(async move {
             let result = compile(submitted_code).await;
@@ -98,7 +104,8 @@ fn App() -> View {
             div(class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2") {
                 Editor(editor=editor, on_run=run)
                 div(class="flex min-h-[55dvh] min-w-0 flex-col md:min-h-0") {
-                    Output(preview=preview, running=running, expanded=expand_diagnostics)
+                    Output(preview=preview, running=running, expanded=expand_diagnostics, console_entries=console_entries)
+                    ConsoleWindow(entries=console_entries, preview=preview)
                     OutputMetadata(output=output, expanded=expand_diagnostics, editor=metadata_editor)
                 }
             }
@@ -194,6 +201,7 @@ fn Output(
     preview: Signal<Option<String>>,
     running: Signal<bool>,
     expanded: ReadSignal<bool>,
+    console_entries: Signal<Vec<ConsoleEntry>>,
 ) -> View {
     view! {
         section(class=move || if expanded.get() {
@@ -207,13 +215,7 @@ fn Output(
             (match preview.get_clone() {
                 Some(document) => {
                     view! {
-                        iframe(
-                            title="Playground output",
-                            "sandbox"="allow-scripts",
-                            referrerpolicy="no-referrer",
-                            srcdoc=document,
-                            class="min-h-0 w-full flex-1 border-0 bg-white",
-                        )
+                        PreviewFrame(document=document, entries=console_entries)
                     }
                 }
                 None => {
@@ -442,6 +444,10 @@ fn script_string(value: &str) -> String {
 fn preview_document(artifact_url: &str) -> String {
     let backend = compile_url(option_env!("BACKEND_BASE_URL").unwrap_or(""));
     include_str!("preview.html")
+        .replace(
+            "__CONSOLE_BRIDGE__",
+            include_str!("../js/preview-console.js"),
+        )
         .replace("__COMPILE_URL__", &script_string(&backend))
         .replace("__ARTIFACT_URL__", &script_string(artifact_url))
 }
@@ -499,6 +505,12 @@ mod tests {
         assert!(document.contains("await init({ module_or_path:"));
         assert!(!document.contains("__COMPILE_URL__"));
         assert!(!document.contains("__ARTIFACT_URL__"));
+        assert!(!document.contains("__CONSOLE_BRIDGE__"));
+        assert!(document.contains("sycamore-playground-console"));
+        assert!(
+            document.find("sycamore-playground-console").unwrap()
+                < document.find("await import").unwrap()
+        );
     }
 
     #[test]
@@ -509,7 +521,7 @@ mod tests {
         assert!(!encoded.contains('&'));
         assert!(!encoded.contains('\u{2028}'));
         assert_eq!(serde_json::from_str::<String>(&encoded).unwrap(), url);
-        assert_eq!(preview_document(url).matches("</script>").count(), 1);
+        assert_eq!(preview_document(url).matches("</script>").count(), 2);
     }
 
     #[test]
