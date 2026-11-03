@@ -20,6 +20,7 @@ use cache::{ArtifactCache, CacheError};
 use compiler::{CompileError, Compiler};
 use sycamore_playground_shared::{CompileRequest, CompileResponse, DEFAULT_CODE};
 use tokio::sync::{Mutex, Semaphore};
+use tower_http::compression::{CompressionLayer, CompressionLevel};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,19 +59,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let state = AppState::initialize(compiler, cache_root).await?;
 
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/health", get(health_check))
-        .route("/compile", post(compile_handler).options(preflight_handler))
-        .route("/artifacts/{filename}", get(artifact_handler))
-        .with_state(state)
-        .layer(middleware::from_fn(cors_headers))
-        .layer(middleware::from_fn(log_request));
+    let app = app_router(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     tracing::info!(address = %listener.local_addr()?, "HTTP server listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+fn app_router(state: AppState) -> Router {
+    Router::new()
+        .route("/", get(index))
+        .route("/health", get(health_check))
+        .route("/compile", post(compile_handler).options(preflight_handler))
+        .route(
+            "/artifacts/{filename}",
+            get(artifact_handler).layer(
+                // A moderate Brotli level balances transfer size and per-download CPU.
+                // Only artifact downloads are compressed, not compile or health responses.
+                CompressionLayer::new().quality(CompressionLevel::Precise(4)),
+            ),
+        )
+        .with_state(state)
+        .layer(middleware::from_fn(cors_headers))
+        .layer(middleware::from_fn(log_request))
 }
 
 async fn cors_headers(request: Request, next: Next) -> Response {
@@ -346,6 +358,131 @@ mod tests {
         }
         let response = artifact_handler(State(state), Path("missing.js".into())).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn artifact_routes_negotiate_brotli_and_preserve_headers() {
+        use std::io::Read;
+        use tower::ServiceExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let compiler = Compiler::initialize(root.path().join("compilation-env"))
+            .await
+            .unwrap();
+        let mut cache = ArtifactCache::new(
+            &root.path().join("cache"),
+            64 * 1024,
+            4,
+            Duration::from_secs(300),
+        )
+        .await
+        .unwrap();
+        let key = cache.key(&CompileRequest {
+            code: "brotli test".into(),
+        });
+        let wasm = b"\0asm\x01\0\0\0".repeat(256);
+        let javascript = b"export const example = 'Brotli compression';\n".repeat(64);
+        cache
+            .insert(
+                key.clone(),
+                &wasm,
+                &javascript,
+                CompileResponse {
+                    artifact_url: Some(format!("/artifacts/{key}.wasm")),
+                    compilation_time_ms: 1,
+                    warnings: Vec::new(),
+                    errors: Vec::new(),
+                    cache_hit: false,
+                },
+                false,
+            )
+            .await
+            .unwrap();
+        let app = app_router(AppState {
+            build_lock: Arc::new(Mutex::new(())),
+            compiler: Arc::new(compiler),
+            cache: Arc::new(Mutex::new(cache)),
+            compile_slots: Arc::new(Semaphore::new(8)),
+        });
+
+        for (extension, content_type, original) in [
+            ("wasm", "application/wasm", &wasm),
+            ("js", "text/javascript", &javascript),
+        ] {
+            for (accept_encoding, compressed) in [
+                (None, false),
+                (Some("br"), true),
+                (Some("gzip, br"), true),
+                (Some("gzip"), false),
+                (Some("br;q=0"), false),
+            ] {
+                let mut request =
+                    axum::http::Request::builder().uri(format!("/artifacts/{key}.{extension}"));
+                if let Some(encoding) = accept_encoding {
+                    request = request.header("Accept-Encoding", encoding);
+                }
+                let response = app
+                    .clone()
+                    .oneshot(request.body(axum::body::Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                assert_eq!(response.headers()["content-type"], content_type);
+                assert_eq!(response.headers()["cache-control"], "private, max-age=300");
+                assert_eq!(response.headers()["access-control-allow-origin"], "*");
+                assert!(response.headers().get_all("vary").iter().any(|value| {
+                    value
+                        .to_str()
+                        .unwrap()
+                        .split(',')
+                        .any(|part| part.trim().eq_ignore_ascii_case("accept-encoding"))
+                }));
+                if compressed {
+                    assert_eq!(response.headers()["content-encoding"], "br");
+                    assert!(!response.headers().contains_key("content-length"));
+                } else {
+                    assert!(!response.headers().contains_key("content-encoding"));
+                }
+                let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+                    .await
+                    .unwrap();
+                if compressed {
+                    assert!(body.len() < original.len());
+                    let mut decoded = Vec::new();
+                    brotli::Decompressor::new(body.as_ref(), 4096)
+                        .read_to_end(&mut decoded)
+                        .unwrap();
+                    assert_eq!(&decoded, original);
+                } else {
+                    assert_eq!(body.as_ref(), original.as_slice());
+                }
+            }
+        }
+        let health = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/health")
+                    .header("Accept-Encoding", "br")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(health.status(), StatusCode::OK);
+        assert!(!health.headers().contains_key("content-encoding"));
+        let missing = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/artifacts/missing.wasm")
+                    .header("Accept-Encoding", "br")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(missing.headers()["cache-control"], "no-store");
     }
 
     #[tokio::test]

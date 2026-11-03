@@ -12,8 +12,13 @@ sha2 = "0.10"
 tempfile = "3"
 sycamore-playground-shared = { path = "../shared" }
 tokio = { version = "1.54.1", features = ["full"] }
+tower-http = { version = "0.6", features = ["compression-br"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+brotli = "9"
+tower = { version = "0.5", features = ["util"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process"] }
