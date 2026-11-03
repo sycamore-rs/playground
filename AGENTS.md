@@ -29,6 +29,25 @@ Server logs use `tracing`, writing timestamped, leveled events to stderr. The de
 
 The runtime compilation environment needs the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli` (available in `nix develop`). Keep the CLI version in `Dockerfile` and `flake.nix` aligned with the exact `wasm-bindgen` dependency in `server/Cargo.toml.template`. Compilation runs Cargo offline, then `wasm-bindgen --target web`, and caches the processed `_bg.wasm` together with its generated JavaScript glue. Rebuild existing precompiled bundles with `--precompile` after upgrading from WASM-only bundles. For a fresh local workspace, copy `server/Cargo.toml.template` to `compilation-env/Cargo.toml`, create `compilation-env/src/main.rs` with `fn main() {}`, and run `cargo fetch --manifest-path compilation-env/Cargo.toml` before compiling. Do not filter this fetch by target: offline Cargo resolution can require manifests for target-inactive dependencies, including Sycamore's SSR-only `html-escape`. The Docker image sets this up for the container. Docker builds and container-based sample compilation checks are not required unless explicitly requested.
 
+## Browser testing with Playwright (Pi)
+
+Use the **Playwright MCP server with the Playwright browser extension** to control an approved tab in the user's existing Chromium. This setup has been verified for editing playground code, compiling it, inspecting screenshots, and clicking controls inside the output iframe.
+
+- The MCP server is named `playwright`. Discover its tools through `codemode` using `searchTools(..., { namespace: "mcp__playwright" })` or `describeTool()`, then invoke `tools.mcp__playwright__...`. Do not assume browser tools are declared directly.
+- Start with `browser_tabs` (`action: "list"`) and `browser_snapshot` to confirm the selected tab and URL. The extension may ask the user to approve the connection and select a tab. Do not access unrelated tabs.
+- The deployed playground is `https://play.sycamore.dev/`. To verify repository changes, use the local Trunk URL instead (normally `http://localhost:8080`), with the backend and Trunk running as described above. Testing the deployed site does not test un-deployed changes.
+- Use fresh accessibility snapshots to obtain element references before filling the Rust code textbox or clicking Run. After compilation, inspect the metadata and wait for the output iframe to finish loading. Interact with controls inside the iframe and verify the resulting state, not just compilation success.
+- For visual work, take screenshots with `browser_take_screenshot` and actually view the returned images. In codemode, forward image content blocks with `image(block)`; a screenshot path alone is not visual verification. Check relevant desktop/mobile layouts and loading/error states.
+- HTTP 408 means the server's five-second compilation timeout was exceeded. A single retry may succeed after a cold build warms the compilation workspace; report persistent failures rather than retrying indefinitely.
+- Prefer this long-lived MCP connection over launching `playwright-cli open` through sandboxed Bash. The installed Linux `pi-sandbox` runtime creates a per-command PID namespace, so browser daemons started there do not reliably survive between tool calls. Do not disable or weaken the sandbox to work around this.
+- MCP browser control is separate from the Bash sandbox's restrictions. Keep manual extension approval enabled and prefer a dedicated development browser profile. Do not change user-level permissions or browser configuration without approval.
+
+### User setup / troubleshooting
+
+Install the official [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm) in Chromium. From a normal terminal, register the server with `pi mcp add playwright -- npx -y @playwright/mcp@latest --extension`. In `~/.pi/agent/mcp.json`, set the server's `env.PLAYWRIGHT_MCP_EXECUTABLE_PATH` to the user's Chromium executable (find it with `command -v chromium`). This MCP setting is independent of the CLI wrapper in `flake.nix`; without it the extension integration may incorrectly look in Google Chrome's profile directory. No global npm installation is required.
+
+Run `/reload` and inspect/reconnect the server through `/mcp`; restart Pi if needed. Keep browser-profile tokens and other machine-specific credentials out of this repository.
+
 ## Frontend backend URL configuration
 
 - The frontend reads `BACKEND_BASE_URL` at compile time using `option_env!()`. Unset or empty means same-origin requests (`/compile`), preserving the local Trunk proxy workflow. A trailing slash is allowed; the frontend appends `/compile` to the base URL.
