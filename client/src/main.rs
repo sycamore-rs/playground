@@ -24,34 +24,21 @@ fn main() {
     sycamore::render(App);
 }
 
+type EditorHandle = Rc<RefCell<Option<CodeEditor>>>;
+
 #[component]
 fn App() -> View {
-    let editor_host = create_node_ref();
-    let editor = Rc::new(RefCell::new(None::<CodeEditor>));
-    on_mount({
-        let editor = Rc::clone(&editor);
-        move || {
-            let host = editor_host.get().unchecked_into::<web_sys::HtmlElement>();
-            *editor.borrow_mut() = Some(mount_editor(&host, DEFAULT_CODE));
-        }
-    });
-    on_cleanup({
-        let editor = Rc::clone(&editor);
-        move || {
-            if let Some(editor) = editor.borrow_mut().take() {
-                destroy_editor(&editor);
-            }
-        }
-    });
+    let editor = EditorHandle::default();
     let running = create_signal(false);
     let output = create_signal("Click Run to compile and run the code.".to_owned());
     let preview = create_signal(None::<String>);
 
-    let run = move |_| {
+    let run_editor = Rc::clone(&editor);
+    let run = move || {
         if running.get() {
             return;
         }
-        let Some(submitted_code) = editor.borrow().as_ref().map(editor_code) else {
+        let Some(submitted_code) = run_editor.borrow().as_ref().map(editor_code) else {
             return;
         };
         running.set(true);
@@ -82,81 +69,118 @@ fn App() -> View {
         main(
             class="flex min-h-dvh flex-col bg-white text-gray-900 md:h-dvh md:overflow-hidden dark:bg-gray-950 dark:text-gray-100",
         ) {
-            header(
-                class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-gray-100 px-3 sm:px-4 dark:border-gray-800 dark:bg-gray-900",
-            ) {
-                div(class="flex min-w-0 items-center gap-2") {
-                    img(src="assets/sycamore-logo.svg", alt="", class="h-7 w-7 shrink-0")
-                    h1(class="truncate text-sm font-semibold tracking-tight") {
-                        "Sycamore Playground"
-                    }
-                }
-                button(
-                    r#type="button",
-                    on:click=run,
-                    disabled=move || running.get(),
-                    class="inline-flex h-8 min-w-20 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400",
-                ) {
-                    span(aria-hidden="true", class="text-xs") { "▶︎" }
-                    (if running.get() { "Running…" } else { "Run" })
-                }
-            }
+            Header(running=running, on_run=run)
             div(class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2") {
-                section(
-                    class="flex h-[55dvh] min-h-0 min-w-0 flex-col border-b border-gray-200 md:h-auto md:border-r md:border-b-0 dark:border-gray-800",
-                ) {
-                    h2(
-                        id="code-label",
-                        class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
-                    ) { "Rust code" }
-                    div(
-                        r#ref=editor_host,
-                        class="editor-host min-h-0 min-w-0 flex-1 overflow-hidden",
-                    )
-                }
+                Editor(editor=editor)
                 div(class="flex min-h-[55dvh] min-w-0 flex-col md:min-h-0") {
-                    section(class="flex min-h-72 flex-1 flex-col md:min-h-0") {
-                        h2(
-                            class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
-                        ) { "Output" }
-                        (match preview.get_clone() {
-                            Some(document) => {
-                                view! {
-                                    iframe(
-                                        title="Playground output",
-                                        "sandbox"="allow-scripts",
-                                        referrerpolicy="no-referrer",
-                                        srcdoc=document,
-                                        class="min-h-0 w-full flex-1 border-0 bg-white",
-                                    )
-                                }
-                            }
-                            None => {
-                                view! {
-                                    div(
-                                        class="flex flex-1 items-center justify-center px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500",
-                                    ) {
-                                        (if running.get() {
-                                            "Compiling your app…"
-                                        } else {
-                                            "Run your code to see the result."
-                                        })
-                                    }
-                                }
-                            }
-                        })
-                    }
-                    section(class="shrink-0 border-t border-gray-200 dark:border-gray-800") {
-                        h2(
-                            class="flex h-9 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
-                        ) { "Output metadata" }
-                        pre(
-                            aria-live="polite",
-                            class="max-h-48 overflow-auto whitespace-pre-wrap break-words bg-gray-50/50 px-4 py-3 font-mono text-xs leading-relaxed text-gray-600 md:max-h-40 dark:bg-gray-900/30 dark:text-gray-400",
-                        ) { (output.get_clone()) }
-                    }
+                    Output(preview=preview, running=running)
+                    OutputMetadata(output=output)
                 }
             }
+        }
+    }
+}
+
+#[component(inline_props)]
+fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
+    view! {
+        header(
+            class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-gray-100 px-3 sm:px-4 dark:border-gray-800 dark:bg-gray-900",
+        ) {
+            div(class="flex min-w-0 items-center gap-2") {
+                img(src="assets/sycamore-logo.svg", alt="", class="h-7 w-7 shrink-0")
+                h1(class="truncate text-sm font-semibold tracking-tight") { "Sycamore Playground" }
+            }
+            button(
+                r#type="button",
+                on:click=move |_| on_run(),
+                disabled=move || running.get(),
+                class="inline-flex h-8 min-w-20 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400",
+            ) {
+                span(aria-hidden="true", class="text-xs") { "▶︎" }
+                (if running.get() { "Running…" } else { "Run" })
+            }
+        }
+    }
+}
+
+#[component(inline_props)]
+fn Editor(editor: EditorHandle) -> View {
+    let editor_host = create_node_ref();
+    on_mount({
+        let editor = Rc::clone(&editor);
+        move || {
+            let host = editor_host.get().unchecked_into::<web_sys::HtmlElement>();
+            *editor.borrow_mut() = Some(mount_editor(&host, DEFAULT_CODE));
+        }
+    });
+    on_cleanup(move || {
+        if let Some(editor) = editor.borrow_mut().take() {
+            destroy_editor(&editor);
+        }
+    });
+
+    view! {
+        section(
+            class="flex h-[55dvh] min-h-0 min-w-0 flex-col border-b border-gray-200 md:h-auto md:border-r md:border-b-0 dark:border-gray-800",
+        ) {
+            h2(
+                id="code-label",
+                class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
+            ) { "Rust code" }
+            div(r#ref=editor_host, class="editor-host min-h-0 min-w-0 flex-1 overflow-hidden")
+        }
+    }
+}
+
+#[component(inline_props)]
+fn Output(preview: Signal<Option<String>>, running: Signal<bool>) -> View {
+    view! {
+        section(class="flex min-h-72 flex-1 flex-col md:min-h-0") {
+            h2(
+                class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
+            ) { "Output" }
+            (match preview.get_clone() {
+                Some(document) => {
+                    view! {
+                        iframe(
+                            title="Playground output",
+                            "sandbox"="allow-scripts",
+                            referrerpolicy="no-referrer",
+                            srcdoc=document,
+                            class="min-h-0 w-full flex-1 border-0 bg-white",
+                        )
+                    }
+                }
+                None => {
+                    view! {
+                        div(
+                            class="flex flex-1 items-center justify-center px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500",
+                        ) {
+                            (if running.get() {
+                                "Compiling your app…"
+                            } else {
+                                "Run your code to see the result."
+                            })
+                        }
+                    }
+                }
+            })
+        }
+    }
+}
+
+#[component(inline_props)]
+fn OutputMetadata(output: Signal<String>) -> View {
+    view! {
+        section(class="shrink-0 border-t border-gray-200 dark:border-gray-800") {
+            h2(
+                class="flex h-9 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
+            ) { "Output metadata" }
+            pre(
+                aria-live="polite",
+                class="max-h-48 overflow-auto whitespace-pre-wrap break-words bg-gray-50/50 px-4 py-3 font-mono text-xs leading-relaxed text-gray-600 md:max-h-40 dark:bg-gray-900/30 dark:text-gray-400",
+            ) { (output.get_clone()) }
         }
     }
 }
