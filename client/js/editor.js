@@ -14,7 +14,7 @@ function theme(dark) {
     return [
         EditorView.theme({
             "&": { height: "100%", color: foreground, backgroundColor: background, fontSize: "13px" },
-            "&.cm-focused": { outline: `2px solid ${accent}`, outlineOffset: "-2px" },
+            "&.cm-focused": { outline: "none" },
             ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.65", overflow: "auto" },
             ".cm-content": { padding: "12px 0", caretColor: foreground },
             ".cm-line": { padding: "0 12px" },
