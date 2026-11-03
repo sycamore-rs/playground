@@ -43,7 +43,7 @@ function theme(dark) {
     ];
 }
 
-export function mount(host, code) {
+export function mount(host, code, onRun) {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const appearance = new Compartment();
     const view = new EditorView({
@@ -65,7 +65,17 @@ export function mount(host, code) {
     // Leave Tab free for keyboard navigation (CodeMirror's default).
     const updateTheme = () => view.dispatch({ effects: appearance.reconfigure(theme(media.matches)) });
     media.addEventListener("change", updateTheme);
-    return { view, media, updateTheme };
+    const document = host.ownerDocument;
+    const runShortcut = (event) => {
+        if (event.key === "Enter" && event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && !event.isComposing) {
+            // Capture before CodeMirror's own Ctrl+Enter command can insert a line.
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) onRun();
+        }
+    };
+    document.addEventListener("keydown", runShortcut, true);
+    return { view, media, updateTheme, document, runShortcut };
 }
 
 export function getCode(editor) {
@@ -73,6 +83,7 @@ export function getCode(editor) {
 }
 
 export function destroy(editor) {
+    editor.document.removeEventListener("keydown", editor.runShortcut, true);
     editor.media.removeEventListener("change", editor.updateTheme);
     editor.view.destroy();
 }

@@ -11,7 +11,7 @@ extern "C" {
     type CodeEditor;
 
     #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = mount)]
-    fn mount_editor(host: &web_sys::HtmlElement, code: &str) -> CodeEditor;
+    fn mount_editor(host: &web_sys::HtmlElement, code: &str, on_run: &JsValue) -> CodeEditor;
 
     #[wasm_bindgen(js_namespace = PlaygroundEditor, js_name = getCode)]
     fn editor_code(editor: &CodeEditor) -> String;
@@ -65,13 +65,14 @@ fn App() -> View {
         });
     };
 
+    let header_run = run.clone();
     view! {
         main(
             class="flex min-h-dvh flex-col bg-white text-gray-900 md:h-dvh md:overflow-hidden dark:bg-gray-950 dark:text-gray-100",
         ) {
-            Header(running=running, on_run=run)
+            Header(running=running, on_run=header_run)
             div(class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2") {
-                Editor(editor=editor)
+                Editor(editor=editor, on_run=run)
                 div(class="flex min-h-[55dvh] min-w-0 flex-col md:min-h-0") {
                     Output(preview=preview, running=running)
                     OutputMetadata(output=output)
@@ -95,6 +96,8 @@ fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
                 r#type="button",
                 on:click=move |_| on_run(),
                 disabled=move || running.get(),
+                title="Run (Ctrl+Enter)",
+                aria-keyshortcuts="Control+Enter",
                 class="inline-flex h-8 min-w-20 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400",
             ) {
                 span(aria-hidden="true", class="text-xs") { "▶︎" }
@@ -105,19 +108,19 @@ fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
 }
 
 #[component(inline_props)]
-fn Editor(editor: EditorHandle) -> View {
+fn Editor(editor: EditorHandle, on_run: impl Fn() + 'static) -> View {
     let editor_host = create_node_ref();
-    on_mount({
-        let editor = Rc::clone(&editor);
-        move || {
-            let host = editor_host.get().unchecked_into::<web_sys::HtmlElement>();
-            *editor.borrow_mut() = Some(mount_editor(&host, DEFAULT_CODE));
-        }
-    });
-    on_cleanup(move || {
-        if let Some(editor) = editor.borrow_mut().take() {
-            destroy_editor(&editor);
-        }
+    on_mount(move || {
+        let on_run = Closure::<dyn Fn()>::new(on_run);
+        let host = editor_host.get().unchecked_into::<web_sys::HtmlElement>();
+        *editor.borrow_mut() = Some(mount_editor(&host, DEFAULT_CODE, on_run.as_ref()));
+        on_cleanup(move || {
+            if let Some(editor) = editor.borrow_mut().take() {
+                destroy_editor(&editor);
+            }
+            // Keep the Rust callback alive until the JS listeners are removed.
+            drop(on_run);
+        });
     });
 
     view! {
