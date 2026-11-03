@@ -80,58 +80,80 @@ fn App() -> View {
 
     view! {
         main(
-            class="min-h-screen bg-gray-50 px-4 py-8 text-gray-900 dark:bg-gray-950 dark:text-gray-100",
+            class="flex min-h-dvh flex-col bg-white text-gray-900 md:h-dvh md:overflow-hidden dark:bg-gray-950 dark:text-gray-100",
         ) {
-            div(class="mx-auto max-w-7xl space-y-6") {
-                header(
-                    class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 bg-gray-100 p-4 dark:border-gray-800 dark:bg-gray-900",
-                ) {
-                    div(class="flex min-w-0 items-center gap-3") {
-                        img(src="assets/sycamore-logo.svg", alt="", class="h-10 w-10 shrink-0")
-                        h1(class="text-xl font-semibold sm:text-2xl") { "Sycamore Playground" }
+            header(
+                class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-gray-100 px-3 sm:px-4 dark:border-gray-800 dark:bg-gray-900",
+            ) {
+                div(class="flex min-w-0 items-center gap-2") {
+                    img(src="assets/sycamore-logo.svg", alt="", class="h-7 w-7 shrink-0")
+                    h1(class="truncate text-sm font-semibold tracking-tight") {
+                        "Sycamore Playground"
                     }
-                    button(
-                        r#type="button",
-                        on:click=run,
-                        disabled=move || running.get(),
-                        class="shrink-0 rounded bg-orange-700 px-5 py-2 font-medium text-white hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-100 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400 dark:focus:ring-offset-gray-900",
-                    ) { (if running.get() { "Running…" } else { "Run" }) }
                 }
-                div(class="grid grid-cols-1 gap-6 md:grid-cols-2") {
-                    div(class="min-w-0 space-y-6") {
-                        div(class="space-y-2") {
-                            div(id="code-label", class="text-sm font-medium") { "Rust code" }
-                            div(
-                                r#ref=editor_host,
-                                class="min-h-96 w-full overflow-hidden rounded border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900",
-                            )
-                        }
-                    }
-                    div(class="min-w-0 space-y-6") {
+                button(
+                    r#type="button",
+                    on:click=run,
+                    disabled=move || running.get(),
+                    class="inline-flex h-8 min-w-20 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400",
+                ) {
+                    span(aria-hidden="true", class="text-xs") { "▶︎" }
+                    (if running.get() { "Running…" } else { "Run" })
+                }
+            }
+            div(class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2") {
+                section(
+                    class="flex h-[55dvh] min-h-0 min-w-0 flex-col border-b border-gray-200 md:h-auto md:border-r md:border-b-0 dark:border-gray-800",
+                ) {
+                    h2(
+                        id="code-label",
+                        class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
+                    ) { "Rust code" }
+                    div(
+                        r#ref=editor_host,
+                        class="editor-host min-h-0 min-w-0 flex-1 overflow-hidden",
+                    )
+                }
+                div(class="flex min-h-[55dvh] min-w-0 flex-col md:min-h-0") {
+                    section(class="flex min-h-72 flex-1 flex-col md:min-h-0") {
+                        h2(
+                            class="flex h-9 shrink-0 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
+                        ) { "Output" }
                         (match preview.get_clone() {
                             Some(document) => {
                                 view! {
-                                    section(class="space-y-2") {
-                                        h2(class="text-lg font-medium") { "Output" }
-                                        iframe(
-                                            title="Playground output",
-                                            "sandbox"="allow-scripts",
-                                            referrerpolicy="no-referrer",
-                                            srcdoc=document,
-                                            class="min-h-80 w-full rounded border border-gray-300 bg-white dark:border-gray-700",
-                                        )
+                                    iframe(
+                                        title="Playground output",
+                                        "sandbox"="allow-scripts",
+                                        referrerpolicy="no-referrer",
+                                        srcdoc=document,
+                                        class="min-h-0 w-full flex-1 border-0 bg-white",
+                                    )
+                                }
+                            }
+                            None => {
+                                view! {
+                                    div(
+                                        class="flex flex-1 items-center justify-center px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500",
+                                    ) {
+                                        (if running.get() {
+                                            "Compiling your app…"
+                                        } else {
+                                            "Run your code to see the result."
+                                        })
                                     }
                                 }
                             }
-                            None => View::default(),
                         })
-                        section(class="space-y-2") {
-                            h2(class="text-lg font-medium") { "Output metadata" }
-                            pre(
-                                aria-live="polite",
-                                class="min-h-40 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-gray-300 bg-white p-4 font-mono text-sm dark:border-gray-700 dark:bg-gray-900",
-                            ) { (output.get_clone()) }
-                        }
+                    }
+                    section(class="shrink-0 border-t border-gray-200 dark:border-gray-800") {
+                        h2(
+                            class="flex h-9 items-center border-b border-gray-200 bg-gray-50 px-4 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400",
+                        ) { "Output metadata" }
+                        pre(
+                            aria-live="polite",
+                            class="max-h-48 overflow-auto whitespace-pre-wrap break-words bg-gray-50/50 px-4 py-3 font-mono text-xs leading-relaxed text-gray-600 md:max-h-40 dark:bg-gray-900/30 dark:text-gray-400",
+                        ) { (output.get_clone()) }
                     }
                 }
             }

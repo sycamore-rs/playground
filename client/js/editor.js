@@ -13,10 +13,10 @@ function theme(dark) {
     const accent = dark ? "#fb923c" : "#c2410c";
     return [
         EditorView.theme({
-            "&": { color: foreground, backgroundColor: background, fontSize: "14px" },
+            "&": { height: "100%", color: foreground, backgroundColor: background, fontSize: "13px" },
             "&.cm-focused": { outline: `2px solid ${accent}`, outlineOffset: "-2px" },
-            ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", overflow: "auto" },
-            ".cm-content": { minHeight: "24rem", padding: "12px 0", caretColor: foreground },
+            ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.65", overflow: "auto" },
+            ".cm-content": { padding: "12px 0", caretColor: foreground },
             ".cm-line": { padding: "0 12px" },
             ".cm-gutters": { backgroundColor: background, color: muted, borderRight: "none" },
             ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: dark ? "#1f2937" : "#f3f4f6" },
