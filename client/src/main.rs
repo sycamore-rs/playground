@@ -44,31 +44,35 @@ fn App() -> View {
     };
 
     view! {
-        main(class="min-h-screen bg-slate-50 px-4 py-8 text-slate-900") {
-            div(class="mx-auto max-w-5xl space-y-6") {
-                header {
-                    h1(class="text-2xl font-semibold") { "Sycamore Playground" }
-                    p(class="mt-2 text-sm text-slate-600") {
-                        "Compile Rust code and run it in an isolated output frame."
+        main(class="min-h-screen bg-gray-50 px-4 py-8 text-gray-900 dark:bg-gray-950 dark:text-gray-100") {
+            div(class="mx-auto max-w-7xl space-y-6") {
+                header(class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 bg-gray-100 p-4 dark:border-gray-800 dark:bg-gray-900") {
+                    div(class="flex min-w-0 items-center gap-3") {
+                        img(src="assets/sycamore-logo.svg", alt="", class="h-10 w-10 shrink-0")
+                        h1(class="text-xl font-semibold sm:text-2xl") { "Sycamore Playground" }
+                    }
+                    button(
+                        r#type="button",
+                        on:click=run,
+                        disabled=move || running.get(),
+                        class="shrink-0 rounded bg-orange-700 px-5 py-2 font-medium text-white hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-100 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400 dark:focus:ring-offset-gray-900",
+                    ) {
+                        (if running.get() { "Running…" } else { "Run" })
                     }
                 }
+                div(class="grid grid-cols-1 gap-6 md:grid-cols-2") {
+                div(class="min-w-0 space-y-6") {
                 div(class="space-y-2") {
                     label(r#for="code", class="block text-sm font-medium") { "Rust code" }
                     textarea(
                         id="code",
                         bind:value=code,
                         "spellcheck"="false",
-                        class="min-h-96 w-full resize-y rounded border border-slate-300 bg-white p-4 font-mono text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200",
+                        class="min-h-96 w-full resize-y rounded border border-gray-300 bg-white p-4 font-mono text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200 dark:border-gray-700 dark:bg-gray-900 dark:focus:border-orange-400 dark:focus:ring-orange-800",
                     )
                 }
-                button(
-                    r#type="button",
-                    on:click=run,
-                    disabled=move || running.get(),
-                    class="rounded bg-blue-600 px-5 py-2 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-50",
-                ) {
-                    (if running.get() { "Running…" } else { "Run" })
                 }
+                div(class="min-w-0 space-y-6") {
                 (match preview.get_clone() {
                     Some(document) => view! {
                         section(class="space-y-2") {
@@ -78,7 +82,7 @@ fn App() -> View {
                                 "sandbox"="allow-scripts",
                                 referrerpolicy="no-referrer",
                                 srcdoc=document,
-                                class="min-h-80 w-full rounded border border-slate-300 bg-white",
+                                class="min-h-80 w-full rounded border border-gray-300 bg-white dark:border-gray-700",
                             )
                         }
                     },
@@ -88,10 +92,12 @@ fn App() -> View {
                     h2(class="text-lg font-medium") { "Output metadata" }
                     pre(
                         aria-live="polite",
-                        class="min-h-40 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-300 bg-white p-4 font-mono text-sm",
+                        class="min-h-40 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-gray-300 bg-white p-4 font-mono text-sm dark:border-gray-700 dark:bg-gray-900",
                     ) {
                         (output.get_clone())
                     }
+                }
+                }
                 }
             }
         }
