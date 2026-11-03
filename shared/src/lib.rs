@@ -43,11 +43,21 @@ pub struct DiagnosticSpan {
 /// Initial editor contents. Shared with the server's precompiled example registry.
 pub const DEFAULT_CODE: &str = r#"use sycamore::prelude::*;
 
+#[component]
+fn App() -> View {
+    let count = create_signal(0);
+    let increment = move |_| {
+        count.update(|value| *value += 1);
+        console_log!("Count: {}", count.get());
+    };
+
+    view! {
+        p { "Count: " (count.get()) }
+        button(on:click=increment) { "Increment" }
+    }
+}
+
 fn main() {
-    sycamore::render(|| {
-        view! {
-            h1 { "Hello, Sycamore!" }
-        }
-    });
+    sycamore::render(App);
 }
 "#;
