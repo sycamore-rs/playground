@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-sycamore = "0.9"
+sycamore = "0.10.0-beta.1"
 # Keep the CLI in Dockerfile and flake.nix in sync with this exact version.
 wasm-bindgen = "=0.2.126"
 

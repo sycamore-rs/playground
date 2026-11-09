@@ -45,15 +45,15 @@ pub const DEFAULT_CODE: &str = r#"use sycamore::prelude::*;
 
 #[component]
 fn App() -> View {
-    let count = create_signal(0);
+    let mut count = create_signal(0);
     let increment = move |_| {
-        count.update(|value| *value += 1);
-        console_log!("Count: {}", count.get());
+        count += 1;
+        console_log!("Count: {count}");
     };
 
     view! {
-        p { "Count: " (count.get()) }
-        button(on:click=increment) { "Increment" }
+        p { "Count: {count}" }
+        button(on_click=increment) { "Increment" }
     }
 }
 
