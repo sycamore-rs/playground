@@ -1,6 +1,7 @@
 import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { rust } from "@codemirror/lang-rust";
@@ -51,6 +52,7 @@ export function mount(host, code, onRun, onChange) {
         doc: code,
         extensions: [
             basicSetup,
+            keymap.of([indentWithTab]),
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) onChange(update.state.doc.toString());
             }),
@@ -65,7 +67,7 @@ export function mount(host, code, onRun, onChange) {
             appearance.of(theme(media.matches)),
         ],
     });
-    // Leave Tab free for keyboard navigation (CodeMirror's default).
+    // CodeMirror supports Escape then Tab to move focus out of the editor.
     const updateTheme = () => view.dispatch({ effects: appearance.reconfigure(theme(media.matches)) });
     media.addEventListener("change", updateTheme);
     const document = host.ownerDocument;
