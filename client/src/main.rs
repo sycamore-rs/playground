@@ -129,6 +129,7 @@ fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
                 disabled=move || running.get(),
                 title="Run (Ctrl+Enter)",
                 aria-keyshortcuts="Control+Enter",
+                data-umami-event="Run",
                 class="inline-flex h-8 min-w-20 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-wait disabled:opacity-50 dark:bg-orange-500 dark:text-gray-950 dark:hover:bg-orange-400",
             ) {
                 span(aria-hidden="true", class="text-xs") { "▶︎" }
