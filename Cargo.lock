@@ -27,12 +27,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "allocator-api2"
-version = "0.2.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
-
-[[package]]
 name = "async-compression"
 version = "0.4.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,12 +202,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "equivalent"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
-
-[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,12 +216,6 @@ name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
-
-[[package]]
-name = "foldhash"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "form_urlencoded"
@@ -323,17 +305,6 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "web-sys",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
-dependencies = [
- "allocator-api2",
- "equivalent",
- "foldhash",
 ]
 
 [[package]]
@@ -787,9 +758,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore"
-version = "0.9.4"
+version = "0.10.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa76a5ba796aa25357d70adf027a171b9da18478cf1ab64a9ed0c06f8fca0e49"
+checksum = "2afac89e9bbcb1e243087ff1c124f568677734180573d7084de65bcc9e01d562"
 dependencies = [
  "sycamore-core",
  "sycamore-macro",
@@ -801,20 +772,19 @@ dependencies = [
 
 [[package]]
 name = "sycamore-core"
-version = "0.9.4"
+version = "0.10.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fce3012a86a7d1ae7ca06db4d2172747a574904eed10808286071cef469f975"
+checksum = "2be7264592a2c1cf857ceb0271ae4d9174f7669d2661527012352feaabe461e7"
 dependencies = [
- "hashbrown",
  "paste",
  "sycamore-reactive",
 ]
 
 [[package]]
 name = "sycamore-macro"
-version = "0.9.4"
+version = "0.10.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dc13361313005ba633fbf1f973c2f2a2e9f31cda659f102eb362361065b450b"
+checksum = "9b94fd988dfa79c6db10a45ca1a82818d954373bdc7574818c8db61f14653376"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -863,9 +833,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-reactive"
-version = "0.9.4"
+version = "0.10.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aca468d1209c2d1ae3059fb93aa005e67bbe1f17375a3c0a65135e98a1b58829"
+checksum = "54bdb291d0aa16c5e441b587a9b71566a9f074d53cd10f012fa49065558e332e"
 dependencies = [
  "paste",
  "slotmap",
@@ -875,9 +845,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-view-parser"
-version = "0.9.4"
+version = "0.10.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e11fcefa71d9fe1100c90903c837224848441712cd90f34570bb44327a5598ca"
+checksum = "ded298c460c813ffde5af4bc01503ab5c9f05dd92c9e3a852de28672ddd91edf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -886,9 +856,9 @@ dependencies = [
 
 [[package]]
 name = "sycamore-web"
-version = "0.9.4"
+version = "0.10.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af7fdad6ed1ec34d7e6a2699b4bf76059b3c56f97b9b94f1ab69edc9b04696f4"
+checksum = "0543fda727a131aa7353053b7d467191d0bdc18cab95f64d19afcbdf68d6df47"
 dependencies = [
  "html-escape",
  "js-sys",

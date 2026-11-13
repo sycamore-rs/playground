@@ -44,7 +44,7 @@ fn parse_message(data: &str) -> Option<ConsoleMessage> {
 }
 
 /// Mounts an isolated preview and listens only to messages from this iframe.
-#[component(inline_props)]
+#[component]
 pub fn PreviewFrame(document: String, entries: Signal<Vec<ConsoleEntry>>) -> View {
     let frame_ref = create_node_ref();
     on_mount(move || {
@@ -101,7 +101,7 @@ pub fn PreviewFrame(document: String, entries: Signal<Vec<ConsoleEntry>>) -> Vie
 }
 
 /// Displays bounded, text-only console output from the current preview.
-#[component(inline_props)]
+#[component]
 pub fn ConsoleWindow(entries: Signal<Vec<ConsoleEntry>>, preview: Signal<Option<String>>) -> View {
     view! {
         (if preview.with(Option::is_some) && !entries.with(Vec::is_empty) {
@@ -122,7 +122,7 @@ pub fn ConsoleWindow(entries: Signal<Vec<ConsoleEntry>>, preview: Signal<Option<
                         h2(class="text-xs font-medium text-gray-500 dark:text-gray-400") { "Console" }
                         button(
                             r#type="button",
-                            on:click=move |_| entries.set(Vec::new()),
+                            on_click=move |_| entries.set(Vec::new()),
                             disabled=move || entries.with(Vec::is_empty),
                             class="rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 focus-visible:outline-2 focus-visible:outline-orange-500 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800",
                         ) { "Clear" }

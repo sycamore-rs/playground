@@ -113,7 +113,7 @@ fn App() -> View {
     }
 }
 
-#[component(inline_props)]
+#[component]
 fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
     view! {
         header(
@@ -125,7 +125,7 @@ fn Header(running: Signal<bool>, on_run: impl Fn() + 'static) -> View {
             }
             button(
                 r#type="button",
-                on:click=move |_| on_run(),
+                on_click=move |_| on_run(),
                 disabled=move || running.get(),
                 title="Run (Ctrl+Enter)",
                 aria-keyshortcuts="Control+Enter",
@@ -162,7 +162,7 @@ fn save_code(code: &str) {
     }
 }
 
-#[component(inline_props)]
+#[component]
 fn Editor(editor: EditorHandle, on_run: impl Fn() + 'static) -> View {
     let editor_host = create_node_ref();
     on_mount(move || {
@@ -197,7 +197,7 @@ fn Editor(editor: EditorHandle, on_run: impl Fn() + 'static) -> View {
     }
 }
 
-#[component(inline_props)]
+#[component]
 fn Output(
     preview: Signal<Option<String>>,
     running: Signal<bool>,
@@ -241,7 +241,7 @@ fn Output(
     }
 }
 
-#[component(inline_props)]
+#[component]
 fn OutputMetadata(
     output: Signal<CompilationState>,
     expanded: ReadSignal<bool>,
@@ -381,7 +381,7 @@ fn diagnostic_text(text: &str, editor: EditorHandle) -> View {
                 href="#code-label",
                 title=format!("Go to line {line}, column {column}"),
                 class="cursor-pointer underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-offset-2",
-                on:click=move |event: web_sys::MouseEvent| {
+                on_click=move |event: web_sys::MouseEvent| {
                     event.prevent_default();
                     if let Some(editor) = editor.borrow().as_ref() {
                         go_to_location(editor, line, column);
