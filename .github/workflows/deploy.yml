@@ -28,7 +28,7 @@ jobs:
       - name: Install Trunk
         uses: taiki-e/install-action@v2
         with:
-          tool: trunk@0.21.14
+          tool: cargo-sycamore@0.2.1
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -42,18 +42,18 @@ jobs:
         run: npm ci
 
       - name: Build frontend
-        working-directory: client
         env:
           # Override with / for a custom domain or user/organization Pages site.
-          PUBLIC_URL: ${{ vars.PAGES_PUBLIC_URL || '/playground/' }}
+          # TODO: fix once cargo-sycamore supports passing public-url by CLI flags.
+          # PUBLIC_URL: ${{ vars.PAGES_PUBLIC_URL || '/playground/' }}
           # Embedded in the frontend WASM; empty falls back to same-origin requests.
           BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
-        run: trunk build --release --locked --public-url "$PUBLIC_URL"
+        run: cargo sycamore build --release --locked
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: client/dist
+          path: client/dist/public
 
   backend:
     name: Build and publish backend

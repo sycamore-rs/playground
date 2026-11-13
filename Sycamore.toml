@@ -1,0 +1,19 @@
+[build]
+assets = ["client/assets/", "client/generated/"]
+
+[build.client]
+package = "sycamore-playground-client"
+
+[build.server]
+package = "sycamore-playground-server"
+
+[serve]
+backend-port = 3000
+forward-routes = ["/compile", "/artifacts/"]
+
+[watch]
+ignore = ["client/generated/editor.js"]
+
+[tools]
+tailwindcss = { enable = true }
+prebuild-hooks = ["cd client && npm run build:editor"]

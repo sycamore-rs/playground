@@ -6,7 +6,8 @@ This repository is the online playground for **sycamore-rs**. The frontend is ho
 
 ## Repository layout
 
-- `client/` — client-side playground code.
+- `Sycamore.toml` — cargo-sycamore build, dev-server forwarding, asset, watch, and prebuild-hook configuration.
+- `client/` — client-side playground code, with static assets in `client/assets/`, editor sources in `client/js/`, and generated editor bundles in `client/generated/`. cargo-sycamore writes deployable frontend output to `client/dist/public/`.
 - `server/` — Rust/Axum service.
 - `shared/` — library crate (`sycamore-playground-shared`) containing API types used by both the client and server, including `CompileRequest`.
 - `compilation-env/` — Rust project and build workspace used for compiling submitted playground code to WebAssembly. It is excluded from the root Cargo workspace and not checked into git.
@@ -21,10 +22,14 @@ Run Rust commands from the repository root unless a command explicitly says othe
 - `cargo check --workspace` — check workspace crates.
 - `cargo check --package sycamore-playground-client --target wasm32-unknown-unknown` — check the browser target.
 - Frontend JavaScript dependencies require Node.js 24 and npm (Node is available in `nix develop`). Run `cd client && npm ci` after checkout or dependency changes. Commit `client/package-lock.json`; do not commit `client/node_modules/` or `client/generated/`.
-- Trunk's `pre_build` hook runs `npm run build:editor` on each build, bundling `client/js/editor.js` and CodeMirror with esbuild. The hook does not install dependencies. Trunk fingerprints the generated script and watches the JS sources, ignoring `node_modules/` and `generated/` to avoid rebuild loops. To bundle the editor alone, run `cd client && npm run build:editor`.
-- Run the backend with `cargo run --package sycamore-playground-server`, then run `cd client && trunk serve` in another terminal. Trunk proxies `/compile` and `/artifacts/` to the backend. The client always displays compilation metadata and, on success with an artifact URL, creates a fresh sandboxed iframe that loads the JavaScript glue and runs the WASM. The iframe permits scripts but not same-origin access; keep these permissions separate so submitted code cannot access the editor.
+- Use `cargo-sycamore` instead of Trunk (CI currently installs `cargo-sycamore@0.2.1`). After installing JavaScript dependencies, run `cd client && cargo sycamore serve` as described in `README.md`. This manages both the frontend and Rust backend; do not start a separate backend for this workflow. The root `Sycamore.toml` selects the client/server packages, sets backend port 3000, and forwards `/compile` and `/artifacts/` to the backend.
+- The `prebuild-hooks` setting in `Sycamore.toml` runs `cd client && npm run build:editor`, bundling `client/js/editor.js` and CodeMirror with esbuild. The hook does not install dependencies. `client/generated/editor.js` is ignored by the watcher to avoid rebuild loops. To bundle the editor alone, run `cd client && npm run build:editor`.
+- `Sycamore.toml` includes `client/assets/` and `client/generated/` as build assets and enables Tailwind CSS. `client/index.html` loads the generated editor script; do not restore Trunk-specific asset directives or configuration.
+- `cargo sycamore build --release --locked` — build with cargo-sycamore from the repository root, matching CI. The GitHub Pages artifact is `client/dist/public/`; do not commit generated distribution files.
+- The client always displays compilation metadata and, on success with an artifact URL, creates a fresh sandboxed iframe that loads the JavaScript glue and runs the WASM. The iframe permits scripts but not same-origin access; keep these permissions separate so submitted code cannot access the editor.
 - `cargo test --workspace` — run workspace tests.
-- `cargo build --release` — build the server in release mode.
+- `cargo build --release --package sycamore-playground-server` — build only the server in release mode.
+- `cargo run --package sycamore-playground-server` — run only the backend from the repository root when needed independently of the cargo-sycamore dev server.
 - `cargo run --package sycamore-playground-server -- --precompile` — compile all examples registered in `server/src/precompiled.rs` into `artifact-cache/precompiled/` and exit. Requires the WASM target. Run offline, not alongside a running server: both modes use the same compilation workspace.
 
 Server logs use `tracing`, writing timestamped, leveled events to stderr. The default level is `info` for the server; set `RUST_LOG=sycamore_playground_server=debug` for cache activity and successful health requests. HTTP logs contain route templates, status codes, and latency, never submitted source, query strings, or full compiler diagnostics.
@@ -37,7 +42,7 @@ Use the **Playwright MCP server with the Playwright browser extension** to contr
 
 - The MCP server is named `playwright`. Discover its tools through `codemode` using `searchTools(..., { namespace: "mcp__playwright" })` or `describeTool()`, then invoke `tools.mcp__playwright__...`. Do not assume browser tools are declared directly.
 - Start with `browser_tabs` (`action: "list"`) and `browser_snapshot` to confirm the selected tab and URL. The extension may ask the user to approve the connection and select a tab. Do not access unrelated tabs.
-- The deployed playground is `https://play.sycamore.dev/`. To verify repository changes, use the local Trunk URL instead (normally `http://localhost:8080`), with the backend and Trunk running as described above. Testing the deployed site does not test un-deployed changes.
+- The deployed playground is `https://play.sycamore.dev/`. To verify repository changes, use the local frontend URL printed by `cargo sycamore serve`, running as described above. Do not use backend port 3000 as the frontend URL. Testing the deployed site does not test un-deployed changes.
 - Use fresh accessibility snapshots to obtain element references before filling the Rust code textbox or clicking Run. After compilation, inspect the metadata and wait for the output iframe to finish loading. Interact with controls inside the iframe and verify the resulting state, not just compilation success.
 - For visual work, take screenshots with `browser_take_screenshot` and actually view the returned images. In codemode, forward image content blocks with `image(block)`; a screenshot path alone is not visual verification. Check relevant desktop/mobile layouts and loading/error states.
 - HTTP 408 means the server's five-second compilation timeout was exceeded. A single retry may succeed after a cold build warms the compilation workspace; report persistent failures rather than retrying indefinitely.
@@ -52,9 +57,9 @@ Run `/reload` and inspect/reconnect the server through `/mcp`; restart Pi if nee
 
 ## Frontend backend URL configuration
 
-- The frontend reads `BACKEND_BASE_URL` at compile time using `option_env!()`. Unset or empty means same-origin requests (`/compile`), preserving the local Trunk proxy workflow. A trailing slash is allowed; the frontend appends `/compile` to the base URL.
+- The frontend reads `BACKEND_BASE_URL` at compile time using `option_env!()`. Unset or empty means same-origin requests (`/compile`), preserving the local cargo-sycamore route-forwarding workflow. A trailing slash is allowed; the frontend appends `/compile` to the base URL.
 - Set the GitHub Actions repository variable `BACKEND_BASE_URL` to the Azure backend's HTTPS base URL (for example, `https://your-app.azurecontainerapps.io`, without `/compile`). `.github/workflows/deploy.yml` passes it into the frontend build environment. Rebuild and redeploy the frontend after changing it; it is not a runtime setting or a secret.
-- The public backend supports uncredentialed cross-origin requests (`Access-Control-Allow-Origin: *`), including JSON POST preflights. This also allows artifact loads from the sandboxed iframe's opaque origin. Trunk's proxy applies only during local development.
+- The public backend supports uncredentialed cross-origin requests (`Access-Control-Allow-Origin: *`), including JSON POST preflights. This also allows artifact loads from the sandboxed iframe's opaque origin. cargo-sycamore's route forwarding applies only during local development.
 
 ## Implementation notes
 
